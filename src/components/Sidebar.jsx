@@ -6,9 +6,10 @@ export default function Sidebar({ children, currentTab, setCurrentTab, user, onL
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const navItems = [
-    { id: 'crm', label: 'Clientes (CRM)', icon: 'groups' },
+    { id: 'crm', label: 'Clientes', icon: 'groups' },
     { id: 'presupuestos', label: 'Presupuestos', icon: 'request_quote' },
     { id: 'facturacion', label: 'Facturación', icon: 'receipt_long' },
+    { id: 'proyectos', label: 'Proyectos', icon: 'folder' },
     { id: 'usuarios', label: 'Control de Accesos', icon: 'manage_accounts' },
   ];
 
@@ -16,9 +17,8 @@ export default function Sidebar({ children, currentTab, setCurrentTab, user, onL
     <div className="min-h-screen flex text-on-surface">
       {/* SideNavBar Shell */}
       <aside
-        className={`fixed left-0 top-0 bottom-0 z-50 flex flex-col bg-primary h-screen transition-all duration-300 border-r border-outline-variant ${
-          isCollapsed ? 'w-[72px]' : 'w-[260px]'
-        }`}
+        className={`fixed left-0 top-0 bottom-0 z-50 flex flex-col bg-primary h-screen transition-all duration-300 border-r border-outline-variant ${isCollapsed ? 'w-[72px]' : 'w-[260px]'
+          }`}
       >
         {/* Brand Logo */}
         <div className={`py-xl flex flex-col gap-xs ${isCollapsed ? 'px-md items-center' : 'px-lg'}`}>
@@ -41,11 +41,10 @@ export default function Sidebar({ children, currentTab, setCurrentTab, user, onL
               <button
                 key={item.id}
                 onClick={() => setCurrentTab(item.id)}
-                className={`flex items-center gap-md px-md py-sm rounded-lg transition-all active:scale-[0.98] w-full text-left ${
-                  isActive
+                className={`flex items-center gap-md px-md py-sm rounded-lg transition-all active:scale-[0.98] w-full text-left ${isActive
                     ? 'bg-primary-container text-secondary-fixed border-l-4 border-secondary-fixed font-semibold'
                     : 'text-on-primary-container hover:text-on-primary hover:bg-primary-container/40'
-                }`}
+                  }`}
                 title={item.label}
               >
                 <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>

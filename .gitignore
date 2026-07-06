@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.xlsx
+*.pdf
+*.docx
+
+# Environment variables
+.env
+.env.*

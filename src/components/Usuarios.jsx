@@ -69,10 +69,10 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus }) {
   return (
     <div className="space-y-lg animate-fade-in text-left">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-end mb-xl gap-md">
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <h1 className="font-display-lg text-display-lg text-primary font-bold">Control de Usuarios y Accesos</h1>
-          <p className="font-body-lg text-body-lg text-on-surface-variant">Administra el personal, sus roles y permisos de seguridad granulares.</p>
+          <h2 className="font-display-lg text-display-lg text-primary font-bold">Control de Usuarios y Accesos</h2>
+          <p className="text-on-surface-variant font-body-md mt-1">Administra el personal, sus roles y permisos de seguridad granulares.</p>
         </div>
         <div className="flex gap-sm">
           <button 

@@ -72,10 +72,10 @@ export default function Facturacion({ invoices, onUpdateInvoiceStatus, onAddInvo
   return (
     <div className="space-y-lg animate-fade-in text-left">
       {/* Page Header */}
-      <div className="flex justify-between items-end flex-wrap gap-md">
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <h2 className="font-display-lg text-display-lg text-primary tracking-tight font-bold">Gestión de Facturación</h2>
-          <p className="font-body-md text-body-md text-on-surface-variant">Supervisión y control de transacciones financieras</p>
+          <h2 className="font-display-lg text-display-lg text-primary font-bold">Gestión de Facturación</h2>
+          <p className="text-on-surface-variant font-body-md mt-1">Supervisión y control de transacciones financieras</p>
         </div>
         <div className="flex gap-sm">
           <button className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-bold rounded-lg transition-all active:scale-95">
@@ -385,9 +385,16 @@ export default function Facturacion({ invoices, onUpdateInvoiceStatus, onAddInvo
                   required
                 >
                   <option value="">Seleccione Cliente...</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
+                  {clients.map(c => {
+                    const val = c.name || c.company;
+                    const label = c.name ? `${c.name} (${c.company})` : c.company;
+                    return (
+                      <option key={c.id} value={val}>{label}</option>
+                    );
+                  })}
+                  {clientName && !clients.some(c => (c.name || c.company) === clientName) && (
+                    <option value={clientName}>{clientName}</option>
+                  )}
                 </select>
               </div>
               <div className="space-y-xs">

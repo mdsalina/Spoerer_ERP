@@ -1,65 +1,154 @@
 import React, { useState } from 'react';
+import { validateRut, formatRut } from '../utils/validation';
 
-export default function CRM({ clients, onAddClient, onSelectClient }) {
+export default function CRM({ clients, onAddClient, onDeleteClient }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Todos los estados');
   
-  // New client form state
+  // New client form states
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [company, setCompany] = useState('');
+  const [editingClientId, setEditingClientId] = useState(null);
+  const [viewingClient, setViewingClient] = useState(null);
+  
+  const [rut, setRut] = useState('');
+  const [company, setCompany] = useState(''); // Nombre o Razón Social
+  const [giro, setGiro] = useState('');
+  const [address, setAddress] = useState('');
+  const [comuna, setComuna] = useState('');
+  const [ciudad, setCiudad] = useState('');
+  const [name, setName] = useState(''); // Contacto
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [status, setStatus] = useState('Cliente Activo');
+  
+  const [rutError, setRutError] = useState('');
 
-  // Filter clients
+  // Filter clients by search term (including RUT, Contact name, Company, and Email)
   const filteredClients = clients.filter(client => {
-    const matchesSearch = 
-      client.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = 
-      statusFilter === 'Todos los estados' || 
-      client.status === statusFilter;
-      
-    return matchesSearch && matchesStatus;
+    const term = searchTerm.toLowerCase();
+    return (
+      (client.rut && client.rut.toLowerCase().includes(term)) ||
+      (client.name && client.name.toLowerCase().includes(term)) || 
+      (client.company && client.company.toLowerCase().includes(term)) ||
+      (client.email && client.email.toLowerCase().includes(term))
+    );
   });
+
+  const handleRutChange = (value) => {
+    // Format RUT as the user types
+    const formatted = formatRut(value);
+    setRut(formatted);
+
+    // Clean RUT to compare with database
+    const cleaned = formatted.split('.').join('').split('-').join('');
+
+    // Perform validation
+    if (cleaned.length > 1) {
+      const isValid = validateRut(formatted);
+      if (!isValid) {
+        setRutError('RUT inválido');
+      } else {
+        setRutError('');
+      }
+    } else {
+      setRutError('');
+    }
+
+    // Auto-fill logic: if RUT exists, load client data for editing
+    if (cleaned.length >= 7) {
+      const existingClient = clients.find(c => {
+        const cCleaned = c.rut ? c.rut.split('.').join('').split('-').join('') : '';
+        return cCleaned === cleaned;
+      });
+
+      if (existingClient) {
+        setEditingClientId(existingClient.id);
+        setCompany(existingClient.company || '');
+        setGiro(existingClient.giro || '');
+        setAddress(existingClient.address || '');
+        setComuna(existingClient.comuna || '');
+        setCiudad(existingClient.ciudad || '');
+        setName(existingClient.name || '');
+        setEmail(existingClient.email || '');
+        setPhone(existingClient.phone || '');
+        setRutError(''); // Clear error since it exists in DB
+      } else {
+        if (editingClientId) {
+          setEditingClientId(null);
+        }
+      }
+    }
+  };
+
+  const handleCloseModal = () => {
+    setEditingClientId(null);
+    setRut('');
+    setCompany('');
+    setGiro('');
+    setAddress('');
+    setComuna('');
+    setCiudad('');
+    setName('');
+    setEmail('');
+    setPhone('');
+    setRutError('');
+    setIsModalOpen(false);
+  };
+
+  const handleOpenEdit = (client) => {
+    setEditingClientId(client.id);
+    setRut(client.rut || '');
+    setCompany(client.company || '');
+    setGiro(client.giro || '');
+    setAddress(client.address || '');
+    setComuna(client.comuna || '');
+    setCiudad(client.ciudad || '');
+    setName(client.name || '');
+    setEmail(client.email || '');
+    setPhone(client.phone || '');
+    setRutError('');
+    setIsModalOpen(true);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!name || !company || !email) return;
+    if (!rut || !company || !email) {
+      alert('Por favor complete los campos obligatorios: RUT, Nombre o Razón Social y Correo Electrónico.');
+      return;
+    }
+
+    if (!validateRut(rut)) {
+      setRutError('RUT inválido');
+      alert('El RUT ingresado no es válido.');
+      return;
+    }
     
-    // Add client
+    // Add/Update client
     onAddClient({
-      id: Date.now().toString(),
-      name,
+      id: editingClientId || Date.now().toString(),
+      rut,
       company,
+      giro,
+      address,
+      comuna,
+      ciudad,
+      name,
       email,
       phone: phone || 'N/A',
-      status,
-      initials: name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+      initials: company.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
     });
 
-    // Reset form
-    setName('');
-    setCompany('');
-    setEmail('');
-    setPhone('');
-    setStatus('Cliente Activo');
-    setIsModalOpen(false);
+    handleCloseModal();
   };
 
   return (
     <div className="space-y-xl animate-fade-in text-left">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-xl gap-md">
+      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <h2 className="font-headline-md text-headline-md text-primary font-bold">Registro de Clientes</h2>
-          <p className="text-on-surface-variant font-body-md mt-1">Gestión centralizada de prospectos y clientes activos de la organización.</p>
+          <h2 className="font-display-lg text-display-lg text-primary font-bold">Registro de Clientes</h2>
+          <p className="text-on-surface-variant font-body-md mt-1">Gestión centralizada de la información de los clientes de la organización.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => { handleCloseModal(); setIsModalOpen(true); }}
           className="bg-secondary text-white px-lg py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:opacity-90 transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-[20px]">person_add</span>
@@ -70,33 +159,20 @@ export default function CRM({ clients, onAddClient, onSelectClient }) {
       {/* Filter Bar */}
       <section className="glass-card rounded-xl p-md flex flex-wrap items-end gap-md shadow-sm">
         <div className="flex-grow min-w-[240px]">
-          <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase">Buscar Cliente/Empresa</label>
+          <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Cliente</label>
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
             <input 
               className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none" 
-              placeholder="Ej: Tech Corp o Alejandro..." 
+              placeholder="Buscar por RUT, Nombre, Empresa o Correo..." 
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
-        <div className="w-48">
-          <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase">Estado</label>
-          <select 
-            className="w-full px-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option>Todos los estados</option>
-            <option>Prospecto</option>
-            <option>Cliente Activo</option>
-            <option>Inactivo</option>
-          </select>
-        </div>
         <button 
-          onClick={() => { setSearchTerm(''); setStatusFilter('Todos los estados'); }}
+          onClick={() => { setSearchTerm(''); }}
           className="px-lg py-2 border border-outline-variant text-on-surface-variant rounded-lg font-bold hover:bg-surface-container-low transition-colors flex items-center gap-sm"
         >
           <span className="material-symbols-outlined text-[18px]">clear_all</span>
@@ -118,14 +194,15 @@ export default function CRM({ clients, onAddClient, onSelectClient }) {
           </div>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[700px]">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-surface-container-low/50">
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Nombre del Cliente</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Empresa</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Correo de Contacto</th>
+                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">RUT</th>
+                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Nombre o Razón Social</th>
+                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Giro</th>
+                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Contacto</th>
+                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Correo Electrónico</th>
                 <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Teléfono</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Estado</th>
                 <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant text-right">Acciones</th>
               </tr>
             </thead>
@@ -133,45 +210,45 @@ export default function CRM({ clients, onAddClient, onSelectClient }) {
               {filteredClients.length > 0 ? (
                 filteredClients.map((client) => (
                   <tr key={client.id} className="hover:bg-surface-container-low/30 transition-colors group">
+                    <td className="px-lg py-4 text-body-md text-primary font-medium">{client.rut || 'N/A'}</td>
                     <td className="px-lg py-4">
                       <div className="flex items-center gap-sm">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                          client.status === 'Cliente Activo' 
-                            ? 'bg-secondary-container text-on-secondary-container' 
-                            : client.status === 'Inactivo'
-                            ? 'bg-error-container text-on-error-container'
-                            : 'bg-primary-fixed text-on-primary-fixed'
-                        }`}>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-secondary-container text-on-secondary-container">
                           {client.initials}
                         </div>
-                        <span className="font-body-md text-body-md text-primary font-medium">{client.name}</span>
+                        <span className="font-body-md text-body-md text-primary font-medium">{client.company}</span>
                       </div>
                     </td>
-                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.company}</td>
+                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.giro || 'N/A'}</td>
+                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.name || 'N/A'}</td>
                     <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.email}</td>
                     <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.phone}</td>
-                    <td className="px-lg py-4">
-                      <span className={`px-sm py-1 rounded text-[11px] font-bold uppercase tracking-wider ${
-                        client.status === 'Cliente Activo'
-                          ? 'bg-secondary-container text-on-secondary-container'
-                          : client.status === 'Inactivo'
-                          ? 'bg-error-container text-on-error-container'
-                          : 'bg-surface-container-highest text-on-surface-variant'
-                      }`}>
-                        {client.status}
-                      </span>
-                    </td>
                     <td className="px-lg py-4 text-right">
                       <div className="flex justify-end gap-md md:opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
-                          onClick={() => onSelectClient(client)}
-                          className="text-on-surface-variant hover:text-secondary" 
+                          onClick={() => setViewingClient(client)}
+                          className="text-on-surface-variant hover:text-secondary transition-colors" 
                           title="Ver Detalle"
                         >
                           <span className="material-symbols-outlined text-lg">visibility</span>
                         </button>
-                        <button className="text-on-surface-variant hover:text-primary" title="Editar">
+                        <button 
+                          onClick={() => handleOpenEdit(client)}
+                          className="text-on-surface-variant hover:text-primary transition-colors" 
+                          title="Editar"
+                        >
                           <span className="material-symbols-outlined text-lg">edit</span>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(`¿Está seguro de que desea eliminar al cliente "${client.company}"? Esta acción no se puede deshacer.`)) {
+                              onDeleteClient(client.id);
+                            }
+                          }}
+                          className="text-on-surface-variant hover:text-error transition-colors" 
+                          title="Eliminar"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
                         </button>
                       </div>
                     </td>
@@ -179,7 +256,7 @@ export default function CRM({ clients, onAddClient, onSelectClient }) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="6" className="text-center py-8 text-on-surface-variant italic">
+                  <td colSpan="7" className="text-center py-8 text-on-surface-variant italic">
                     No se encontraron clientes que coincidan con la búsqueda.
                   </td>
                 </tr>
@@ -205,128 +282,170 @@ export default function CRM({ clients, onAddClient, onSelectClient }) {
         </div>
       </div>
 
-      {/* Secondary Insights (Asymmetric Design) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-xl mt-xl">
-        <div className="lg:col-span-2 glass-card rounded-xl p-lg flex items-center gap-lg">
-          <div className="flex-1">
-            <h4 class="font-title-lg text-title-lg text-primary mb-2 font-semibold">Análisis de Conversión</h4>
-            <p className="text-body-md text-on-surface-variant mb-4">La tasa de conversión de Prospectos a Clientes Activos ha subido un 12% este mes.</p>
-            <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
-              <div className="h-full bg-secondary-fixed" style={{ width: '68%' }}></div>
-            </div>
-            <div className="mt-2 flex justify-between text-label-md text-on-surface-variant uppercase font-semibold">
-              <span>Eficiencia de Cierre</span>
-              <span>68% Meta Mensual</span>
-            </div>
-          </div>
-          <div className="hidden sm:block w-32 h-32 relative flex-shrink-0">
-            <svg className="w-full h-full text-secondary transform -rotate-90" viewBox="0 0 36 36">
-              <path className="text-surface-container-high" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" strokeDasharray="100, 100" strokeWidth="4"></path>
-              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeDasharray="68, 100" strokeLinecap="round" strokeWidth="4"></path>
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-title-lg font-bold">68%</span>
-            </div>
-          </div>
-        </div>
-        <div className="bg-primary-container rounded-xl p-lg text-on-primary-container flex flex-col justify-center relative overflow-hidden text-left">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <span className="material-symbols-outlined text-[80px]" style={{ fontVariationSettings: "'FILL' 1" }}>groups</span>
-          </div>
-          <h4 className="font-title-lg text-title-lg font-bold text-white mb-1">Crecimiento CRM</h4>
-          <p className="text-body-sm mb-4">Nuevos prospectos registrados hoy: <span className="text-secondary-fixed font-bold">+24</span></p>
-          <button className="w-fit px-md py-2 border border-on-primary-container/30 rounded-lg text-body-sm hover:bg-white/10 text-white transition-colors">
-            Ver Informe Diario
-          </button>
-        </div>
-      </div>
-
-      {/* modal window / Crear cliente */}
+      {/* modal window / Crear o Editar cliente */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-lg border border-outline-variant max-w-md w-full overflow-hidden animate-scale-up">
+          <div className="bg-white rounded-xl shadow-lg border border-outline-variant max-w-2xl w-full overflow-hidden animate-scale-up">
             <div className="bg-primary text-white p-lg flex justify-between items-center">
               <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
-                <span className="material-symbols-outlined">person_add</span>
-                Registrar Nuevo Cliente
+                <span className="material-symbols-outlined">{editingClientId ? 'edit_note' : 'person_add'}</span>
+                {editingClientId ? 'Editar Datos del Cliente' : 'Registrar Nuevo Cliente'}
               </h3>
               <button 
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseModal}
                 className="text-white hover:text-secondary-fixed transition-colors"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-lg flex flex-col gap-md">
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">
-                  Nombre Completo
-                </label>
-                <input 
-                  type="text" 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none" 
-                  placeholder="Ej: Alejandro Sánchez"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
+            <form onSubmit={handleSubmit} className="p-lg flex flex-col gap-md max-h-[80vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-md text-left">
+                {/* RUT */}
+                <div className="space-y-xs md:col-span-2">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    RUT *
+                  </label>
+                  <input 
+                    type="text" 
+                    className={`w-full px-md py-md bg-surface-container-low border ${
+                      rutError ? 'border-error focus:border-error focus:ring-error/20' : 'border-outline-variant focus:border-secondary focus:ring-secondary/20'
+                    } rounded outline-none transition-all`} 
+                    placeholder="Ej: 12.345.678-9"
+                    required
+                    value={rut}
+                    onChange={(e) => handleRutChange(e.target.value)}
+                  />
+                  {rutError && (
+                    <span className="text-error text-body-sm block mt-1 font-medium">{rutError}</span>
+                  )}
+                  {editingClientId && (
+                    <span className="text-secondary text-body-sm block mt-1 font-semibold flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-[16px]">info</span>
+                      RUT existente: Editando datos del cliente.
+                    </span>
+                  )}
+                </div>
+
+                {/* Razón Social */}
+                <div className="space-y-xs md:col-span-2">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Nombre o Razón Social *
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: TechNova Solutions S.A."
+                    required
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                  />
+                </div>
+
+                {/* Giro */}
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Giro
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: Servicios Informáticos"
+                    value={giro}
+                    onChange={(e) => setGiro(e.target.value)}
+                  />
+                </div>
+
+                {/* Contacto */}
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Contacto
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: Alejandro Sánchez"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+
+                {/* Dirección */}
+                <div className="space-y-xs md:col-span-2">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Dirección
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: Av. Providencia 1234, Of. 501"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                  />
+                </div>
+
+                {/* Comuna */}
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Comuna
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: Providencia"
+                    value={comuna}
+                    onChange={(e) => setComuna(e.target.value)}
+                  />
+                </div>
+
+                {/* Ciudad */}
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Ciudad
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: Santiago"
+                    value={ciudad}
+                    onChange={(e) => setCiudad(e.target.value)}
+                  />
+                </div>
+
+                {/* Correo Electrónico */}
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Correo Electrónico *
+                  </label>
+                  <input 
+                    type="email" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="ejemplo@empresa.com"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+
+                {/* Teléfono */}
+                <div className="space-y-xs">
+                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                    Teléfono
+                  </label>
+                  <input 
+                    type="text" 
+                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    placeholder="Ej: +56 9 1234 5678"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">
-                  Empresa
-                </label>
-                <input 
-                  type="text" 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none" 
-                  placeholder="Ej: TechNova Solutions"
-                  required
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                />
-              </div>
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">
-                  Correo Electrónico
-                </label>
-                <input 
-                  type="email" 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none" 
-                  placeholder="ejemplo@empresa.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">
-                  Teléfono
-                </label>
-                <input 
-                  type="text" 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none" 
-                  placeholder="Ej: +34 912 345 678"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </div>
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">
-                  Estado Inicial
-                </label>
-                <select 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option>Cliente Activo</option>
-                  <option>Prospecto</option>
-                  <option>Inactivo</option>
-                </select>
-              </div>
-              <div className="flex gap-md mt-sm justify-end">
+
+              {/* Action Buttons */}
+              <div className="flex gap-md mt-sm justify-end border-t border-outline-variant/30 pt-md">
                 <button 
                   type="button" 
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={handleCloseModal}
                   className="px-lg py-md border border-outline-variant text-on-surface-variant rounded-lg font-bold hover:bg-surface-container-low transition-colors"
                 >
                   Cancelar
@@ -335,10 +454,116 @@ export default function CRM({ clients, onAddClient, onSelectClient }) {
                   type="submit" 
                   className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
                 >
-                  Guardar Cliente
+                  {editingClientId ? 'Actualizar Cliente' : 'Guardar Cliente'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* modal window / Ver Ficha de Cliente */}
+      {viewingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-lg border border-outline-variant max-w-2xl w-full overflow-hidden animate-scale-up">
+            <div className="bg-primary text-white p-lg flex justify-between items-center">
+              <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
+                <span className="material-symbols-outlined">badge</span>
+                Ficha del Cliente
+              </h3>
+              <button 
+                onClick={() => setViewingClient(null)}
+                className="text-white hover:text-secondary-fixed transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="p-lg flex flex-col gap-md max-h-[80vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-md text-left">
+                {/* RUT */}
+                <div className="space-y-xs md:col-span-2">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">RUT</span>
+                    <span className="font-body-lg text-body-lg text-primary font-semibold mt-1 block">{viewingClient.rut || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Razón Social */}
+                <div className="space-y-xs md:col-span-2">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Nombre o Razón Social</span>
+                    <span className="font-body-lg text-body-lg text-primary font-semibold mt-1 block">{viewingClient.company || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Giro */}
+                <div className="space-y-xs">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Giro</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.giro || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Contacto */}
+                <div className="space-y-xs">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Contacto (Persona)</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.name || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Dirección */}
+                <div className="space-y-xs md:col-span-2">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Dirección</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.address || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Comuna */}
+                <div className="space-y-xs">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Comuna</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.comuna || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Ciudad */}
+                <div className="space-y-xs">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Ciudad</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.ciudad || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Correo Electrónico */}
+                <div className="space-y-xs">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Correo Electrónico</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.email || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Teléfono */}
+                <div className="space-y-xs">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Teléfono</span>
+                    <span className="font-body-lg text-body-lg text-primary mt-1 block">{viewingClient.phone || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-md mt-sm justify-end border-t border-outline-variant/30 pt-md">
+                <button 
+                  type="button" 
+                  onClick={() => setViewingClient(null)}
+                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
+                >
+                  Cerrar Ficha
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

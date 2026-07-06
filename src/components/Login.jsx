@@ -25,16 +25,14 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="min-h-screen flex flex-col font-body-md text-on-surface">
-      {/* Header Section for Logo */}
-      <header className="w-full pt-xl px-lg flex justify-center">
+      {/* Main Content: Login Form */}
+      <main className="flex-grow flex flex-col items-center justify-center p-md gap-md">
+        {/* Logo and title right above the login card */}
         <div className="flex items-center gap-sm">
           <img src={logoSpr} className="w-10 h-10 object-contain rounded" alt="Logo SPOERER" />
           <span className="font-display-lg text-display-lg text-primary tracking-tight">SPOERER ERP</span>
         </div>
-      </header>
 
-      {/* Main Content: Login Form */}
-      <main className="flex-grow flex items-center justify-center p-md">
         <div className="login-card bg-surface-container-lowest w-full max-w-[440px] rounded-xl p-xl flex flex-col gap-lg shadow-sm">
           {/* Welcome Header */}
           <div className="text-center space-y-xs">
