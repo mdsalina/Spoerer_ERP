@@ -155,6 +155,14 @@ export default function App() {
       rentabilidad: 25,
       anio: 2023,
       cliente: 'Aurora Energy Ltd',
+      extraCosts: [
+        {
+          id: 'ec-1',
+          amount: 150.00,
+          superficie: 25.0,
+          comment: 'Instalación de racks adicionales'
+        }
+      ],
       budgets: [
         {
           quoteId: '8841',

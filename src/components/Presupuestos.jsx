@@ -1,10 +1,105 @@
 import React, { useState, useEffect } from 'react';
 import mammoth from 'mammoth';
 
+// Helper to parse date strings of format DD/MM/YYYY or YYYY-MM-DD to Date object
+const parseDate = (dateStr) => {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    return new Date(year, month, day);
+  }
+  const fallbackParts = dateStr.split('-');
+  if (fallbackParts.length === 3) {
+    const year = parseInt(fallbackParts[0], 10);
+    const month = parseInt(fallbackParts[1], 10) - 1;
+    const day = parseInt(fallbackParts[2], 10);
+    return new Date(year, month, day);
+  }
+  return new Date(dateStr);
+};
+
+// Helper to check if a quote falls within the selected period of months
+const isQuoteInPeriod = (quote, period) => {
+  if (period === 'all') return true;
+  const quoteDate = parseDate(quote.date);
+  if (!quoteDate) return false;
+  
+  const today = new Date();
+  const cutoffDate = new Date();
+  cutoffDate.setMonth(today.getMonth() - parseInt(period, 10));
+  
+  return quoteDate >= cutoffDate;
+};
+
 export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onAddProject }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [calcPeriod, setCalcPeriod] = useState('12');
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewingQuote, setViewingQuote] = useState(null);
+
+  const handleViewQuote = (quote) => {
+    setViewingQuote(quote);
+    setIsViewModalOpen(true);
+  };
+
+  const findQuoteBillingTable = (quoteId) => {
+    if (!projects) return null;
+    for (const proj of projects) {
+      const budgetMatch = proj.budgets?.find(b => b.quoteId === quoteId);
+      if (budgetMatch) {
+        return budgetMatch.billingTable || [];
+      }
+    }
+    return null;
+  };
+
+  const [editBillingTable, setEditBillingTable] = useState([]);
+
+  const handleEditRowChange = (index, field, value) => {
+    setEditBillingTable(prev => prev.map((row, idx) => {
+      if (idx === index) {
+        return {
+          ...row,
+          [field]: field === 'uf' ? (parseFloat(value) || 0) : value
+        };
+      }
+      return row;
+    }));
+  };
+
+  const handleAddEditRow = () => {
+    const lastRow = editBillingTable[editBillingTable.length - 1];
+    let nextDate = new Date().toISOString().split('T')[0];
+    if (lastRow && lastRow.date) {
+      nextDate = addMonthsToDateString(lastRow.date, 1);
+    }
+    const nextNum = String(editBillingTable.length + 1).padStart(2, '0');
+    setEditBillingTable(prev => [
+      ...prev,
+      {
+        numQuota: nextNum,
+        date: nextDate,
+        uf: 0,
+        comment: '',
+        status: 'Por facturar'
+      }
+    ]);
+  };
+
+  const handleRemoveEditRow = (index) => {
+    setEditBillingTable(prev => {
+      const filtered = prev.filter((_, idx) => idx !== index);
+      return filtered.map((row, idx) => ({
+        ...row,
+        numQuota: String(idx + 1).padStart(2, '0')
+      }));
+    });
+  };
 
   // Project Approval modal states
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
@@ -15,11 +110,11 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
   const [descripcion, setDescripcion] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [anio, setAnio] = useState('');
-  const [numCuotas, setNumCuotas] = useState('');
   const [valorProyecto, setValorProyecto] = useState(0);
   const [cliente, setCliente] = useState('');
   const [billingTable, setBillingTable] = useState([]);
   const [validationError, setValidationError] = useState('');
+  const [approvingQuoteBackupFiles, setApprovingQuoteBackupFiles] = useState([]);
 
   // New quote form state
   const [quoteId, setQuoteId] = useState('');
@@ -147,43 +242,50 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     }
   };
 
-  const handleNumCuotasChange = (val) => {
-    setNumCuotas(val);
-    regenerateBillingTable(fechaInicio, val, valorProyecto);
+  const addMonthsToDateString = (dateStr, monthsToAdd) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr + 'T00:00:00');
+    if (isNaN(date.getTime())) return dateStr;
+    date.setMonth(date.getMonth() + monthsToAdd);
+    return date.toISOString().split('T')[0];
   };
 
-  const handleFechaInicioChange = (val) => {
-    setFechaInicio(val);
-    regenerateBillingTable(val, numCuotas, valorProyecto);
-  };
-
-  const handleValorProyectoChange = (val) => {
-    setValorProyecto(val);
-    regenerateBillingTable(fechaInicio, numCuotas, val);
-  };
-
-  const regenerateBillingTable = (startDate, cuotas, totalVal) => {
-    const parsedCuotas = parseInt(cuotas);
+  const regenerateGroupedBillingTable = (startDate, totalVal) => {
     const parsedTotalVal = parseFloat(totalVal) || 0;
-    if (!startDate || isNaN(parsedCuotas) || parsedCuotas <= 0) {
+    if (!startDate) {
       setBillingTable([]);
       return;
     }
     
-    const ufPerQuota = parseFloat((parsedTotalVal / parsedCuotas).toFixed(2));
-    let currentDate = new Date(startDate + 'T00:00:00');
-    
-    const newTable = [];
-    for (let i = 1; i <= parsedCuotas; i++) {
-      newTable.push({
-        numQuota: String(i).padStart(2, '0'),
-        date: currentDate.toISOString().split('T')[0],
-        uf: ufPerQuota,
-        comment: ''
-      });
-      currentDate.setMonth(currentDate.getMonth() + 1);
-    }
-    setBillingTable(newTable);
+    const firstRowUf = parseFloat((parsedTotalVal * 0.25).toFixed(2));
+    const secondRowUf = parseFloat(((parsedTotalVal * 0.75) / 10).toFixed(2));
+    const secondRowDate = addMonthsToDateString(startDate, 1);
+
+    const initialTable = [
+      {
+        cuotas: 1,
+        date: startDate,
+        uf: firstRowUf,
+        comment: 'Anticipo'
+      },
+      {
+        cuotas: 10,
+        date: secondRowDate,
+        uf: secondRowUf,
+        comment: 'Mensualidades'
+      }
+    ];
+    setBillingTable(initialTable);
+  };
+
+  const handleFechaInicioChange = (val) => {
+    setFechaInicio(val);
+    regenerateGroupedBillingTable(val, valorProyecto);
+  };
+
+  const handleValorProyectoChange = (val) => {
+    setValorProyecto(val);
+    regenerateGroupedBillingTable(fechaInicio, val);
   };
 
   const handleRowChange = (index, field, value) => {
@@ -191,11 +293,63 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       if (idx === index) {
         return {
           ...row,
-          [field]: field === 'uf' ? (parseFloat(value) || 0) : value
+          [field]: field === 'uf' 
+            ? (parseFloat(value) || 0) 
+            : field === 'cuotas' 
+              ? (parseInt(value) || 1) 
+              : value
         };
       }
       return row;
     }));
+  };
+
+  const handleAddRow = () => {
+    const lastRow = billingTable[billingTable.length - 1];
+    let nextDate = new Date().toISOString().split('T')[0];
+    if (lastRow && lastRow.date) {
+      nextDate = addMonthsToDateString(lastRow.date, 1);
+    }
+    setBillingTable(prev => [
+      ...prev,
+      {
+        cuotas: 1,
+        date: nextDate,
+        uf: 0,
+        comment: ''
+      }
+    ]);
+  };
+
+  const handleRemoveRow = (index) => {
+    setBillingTable(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleApproveModalFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    const invalidFiles = files.filter(file => {
+      const ext = file.name.split('.').pop().toLowerCase();
+      return ext !== 'pdf' && ext !== 'docx';
+    });
+
+    if (invalidFiles.length > 0) {
+      alert('Solo se permiten archivos PDF y DOCX.');
+      return;
+    }
+
+    const newFiles = files.map(file => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      url: URL.createObjectURL(file),
+      fileObject: file
+    }));
+
+    setApprovingQuoteBackupFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const handleApproveModalRemoveFile = (index) => {
+    setApprovingQuoteBackupFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleApproveSubmit = (e) => {
@@ -214,19 +368,38 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       setValidationError("Por favor seleccione la fecha de inicio de facturación.");
       return;
     }
-    if (!numCuotas || numCuotas <= 0) {
-      setValidationError("Por favor ingrese un número de cuotas válido.");
-      return;
-    }
 
     // Validate that sum of cuotas equals valorProyecto
-    const currentSum = billingTable.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
+    const currentSum = billingTable.reduce((acc, row) => acc + ((parseInt(row.cuotas) || 1) * (parseFloat(row.uf) || 0)), 0);
     const roundedSum = Math.round(currentSum * 100) / 100;
     const expectedTotal = Math.round((parseFloat(valorProyecto) || 0) * 100) / 100;
     if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
-      setValidationError(`La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el valor total del proyecto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
+      setValidationError(`La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el valor total del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
       return;
     }
+
+    // Expand the grouped table into single installments for storing
+    let expandedTable = [];
+    let counter = 1;
+    billingTable.forEach(row => {
+      const C = parseInt(row.cuotas) || 1;
+      const U = parseFloat(row.uf) || 0;
+      const V = row.comment || '';
+      for (let i = 0; i < C; i++) {
+        const numStr = String(counter).padStart(2, '0');
+        const dateVal = addMonthsToDateString(row.date, i);
+        expandedTable.push({
+          numQuota: numStr,
+          date: dateVal,
+          uf: U,
+          comment: V,
+          status: 'Por facturar'
+        });
+        counter++;
+      }
+    });
+
+    const totalCuotasCalculated = expandedTable.length;
 
     // Save project
     const newProjectData = {
@@ -236,28 +409,32 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       rentabilidad: parseFloat(rentabilidad) || 0,
       anio: parseInt(anio) || new Date().getFullYear(),
       cliente: cliente,
+      extraCosts: [],
       budgets: [
         {
           quoteId: approvingQuote.id,
           amount: parseFloat(valorProyecto) || 0,
           description: descripcion,
-          numCuotas: parseInt(numCuotas),
-          billingTable: billingTable
+          numCuotas: totalCuotasCalculated,
+          billingTable: expandedTable,
+          backupFiles: approvingQuoteBackupFiles
         }
       ]
     };
 
     onAddProject(newProjectData);
 
-    // Update budget status to Approved
+    // Update budget status to Approved and save files
     onAddQuote({
       ...approvingQuote,
-      status: 'Aprobado'
+      status: 'Aprobado',
+      backupFiles: approvingQuoteBackupFiles
     });
 
     // Reset approval modal states
     setIsApproveModalOpen(false);
     setApprovingQuote(null);
+    setApprovingQuoteBackupFiles([]);
     setValidationError('');
   };
 
@@ -266,6 +443,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     if (quote) {
       if (newStatus === 'Aprobado') {
         setApprovingQuote(quote);
+        setApprovingQuoteBackupFiles(quote.backupFiles || []);
         setProjectName('');
         setSuperficie('');
         setRentabilidad('');
@@ -284,16 +462,25 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
         
         const clientNameVal = quote.company || quote.clientName || '';
         setCliente(clientNameVal);
-        setNumCuotas(1); // Default 1 cuota as requested
         
-        // Regenerate billing table for 1 cuota
-        const ufPerQuota = parseFloat((quote.amount || 0).toFixed(2));
+        // Regenerate billing table with default 2 rows: 1 cuota with 25%, 10 cuotas with 75%
+        const budgetAmount = quote.amount || 0;
+        const firstRowUf = parseFloat((budgetAmount * 0.25).toFixed(2));
+        const secondRowUf = parseFloat(((budgetAmount * 0.75) / 10).toFixed(2));
+        const secondRowDate = addMonthsToDateString(nextMonthDate, 1);
+
         const initialTable = [
           {
-            numQuota: '01',
+            cuotas: 1,
             date: nextMonthDate,
-            uf: ufPerQuota,
-            comment: ''
+            uf: firstRowUf,
+            comment: 'Anticipo'
+          },
+          {
+            cuotas: 10,
+            date: secondRowDate,
+            uf: secondRowUf,
+            comment: 'Mensualidades'
           }
         ];
         setBillingTable(initialTable);
@@ -316,6 +503,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setQuoteTitle('Servicios ERP');
     setSubtotal(1200.00); // default value
     setBackupFiles([]);
+    setEditBillingTable([]);
     setIsExistingQuote(false);
     setIsModalOpen(true);
   };
@@ -352,6 +540,18 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setSubtotal(Math.round(initialSubtotal * 100) / 100);
 
     setBackupFiles(quote.backupFiles || []);
+
+    if (quote.status === 'Aprobado' || quote.status === 'Aprovado') {
+      const pTable = findQuoteBillingTable(quote.id);
+      if (pTable) {
+        setEditBillingTable(pTable);
+      } else {
+        setEditBillingTable([]);
+      }
+    } else {
+      setEditBillingTable([]);
+    }
+
     setIsExistingQuote(true);
     setIsModalOpen(true);
   };
@@ -394,8 +594,20 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       setSubtotal(Math.round(initialSubtotal * 100) / 100);
 
       setBackupFiles(existing.backupFiles || []);
+
+      if (existing.status === 'Aprobado' || existing.status === 'Aprovado') {
+        const pTable = findQuoteBillingTable(existing.id);
+        if (pTable) {
+          setEditBillingTable(pTable);
+        } else {
+          setEditBillingTable([]);
+        }
+      } else {
+        setEditBillingTable([]);
+      }
     } else {
       setIsExistingQuote(false);
+      setEditBillingTable([]);
     }
   }, [quoteId, isModalOpen, quotes, clients]);
 
@@ -642,6 +854,21 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       return;
     }
 
+    // Determine status (preserve existing quote status, or default to Borrador)
+    const existingQuote = quotes.find(q => q.id === formattedId);
+    const finalStatus = existingQuote ? existingQuote.status : 'Borrador';
+
+    // If approved, validate sum of installments
+    if (finalStatus === 'Aprobado' || finalStatus === 'Aprovado') {
+      const currentSum = editBillingTable.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
+      const roundedSum = Math.round(currentSum * 100) / 100;
+      const expectedTotal = Math.round((parseFloat(total) || 0) * 100) / 100;
+      if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
+        alert(`La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el total del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
+        return;
+      }
+    }
+
     const newQuote = {
       id: formattedId,
       clientName: clientName,
@@ -650,7 +877,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       date: issueDate.split('-').reverse().join('/'),
       amount: total,
       validity: `${validity} días`,
-      status: 'Borrador',
+      status: finalStatus,
       items: [
         { id: 1, description: quoteTitle || 'Servicios ERP', qty: 1, price: parseFloat(subtotal) || 0 }
       ],
@@ -659,12 +886,39 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
     onAddQuote(newQuote);
 
+    // If approved, update the project's budget information
+    if (finalStatus === 'Aprobado' || finalStatus === 'Aprovado') {
+      const associatedProject = projects?.find(p => p.budgets?.some(b => b.quoteId === formattedId));
+      if (associatedProject) {
+        const updatedBudgets = associatedProject.budgets.map(b => {
+          if (b.quoteId === formattedId) {
+            return {
+              ...b,
+              amount: total,
+              description: quoteTitle,
+              numCuotas: editBillingTable.length,
+              billingTable: editBillingTable,
+              backupFiles: backupFiles
+            };
+          }
+          return b;
+        });
+
+        const updatedProject = {
+          ...associatedProject,
+          budgets: updatedBudgets
+        };
+        onAddProject(updatedProject);
+      }
+    }
+
     // Reset form
     setSelectedClient('');
     setValidity(30);
     setQuoteTitle('Servicios ERP');
     setSubtotal(0);
     setBackupFiles([]);
+    setEditBillingTable([]);
     setQuoteId('');
     setIsExistingQuote(false);
     setIsModalOpen(false);
@@ -683,6 +937,32 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
     return matchesSearch && matchesStatus;
   });
+
+  // Calculate totals based on selected period
+  const filteredByPeriodQuotes = quotes.filter(q => isQuoteInPeriod(q, calcPeriod));
+
+  const totalApproved = filteredByPeriodQuotes
+    .filter(q => q.status === 'Aprobado' || q.status === 'Aprovado')
+    .reduce((sum, q) => sum + (parseFloat(q.amount) || 0), 0);
+
+  const totalSent = filteredByPeriodQuotes
+    .filter(q => q.status === 'Enviado')
+    .reduce((sum, q) => sum + (parseFloat(q.amount) || 0), 0);
+
+  const totalRejected = filteredByPeriodQuotes
+    .filter(q => q.status === 'Rechazado')
+    .reduce((sum, q) => sum + (parseFloat(q.amount) || 0), 0);
+
+  const approvedQuotesCount = filteredByPeriodQuotes
+    .filter(q => q.status === 'Aprobado' || q.status === 'Aprovado').length;
+
+  const sentQuotesCount = filteredByPeriodQuotes
+    .filter(q => q.status === 'Enviado').length;
+
+  const rejectedQuotesCount = filteredByPeriodQuotes
+    .filter(q => q.status === 'Rechazado').length;
+
+  const existingQuoteObj = quotes.find(q => q.id === quoteId || q.id === quoteId.padStart(4, '0'));
 
   return (
     <div className="space-y-xl animate-fade-in text-left">
@@ -831,6 +1111,13 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                     <td className="p-md text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button
+                          onClick={() => handleViewQuote(quote)}
+                          className="p-1 hover:bg-slate-100 rounded text-secondary hover:text-secondary-fixed-dim transition-all"
+                          title="Visualizar Presupuesto"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">visibility</span>
+                        </button>
+                        <button
                           onClick={() => handleEditQuote(quote)}
                           className="p-1 hover:bg-slate-100 rounded text-secondary hover:text-secondary-fixed-dim transition-all"
                           title="Editar Presupuesto"
@@ -873,6 +1160,292 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
           </div>
         </div>
       </div>
+
+      {/* Sección de Resumen Financiero por Período */}
+      <div className="glass-card rounded-xl p-lg shadow-sm space-y-md">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="font-title-lg text-title-lg text-primary font-bold">Resumen de Presupuestos</h3>
+            <p className="text-on-surface-variant text-body-sm">
+              Monto acumulado en UF según el estado del presupuesto en el período seleccionado.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="calc-period-select" className="text-label-md text-on-surface-variant uppercase font-semibold">
+              Período de cálculo:
+            </label>
+            <select
+              id="calc-period-select"
+              value={calcPeriod}
+              onChange={(e) => setCalcPeriod(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none cursor-pointer"
+            >
+              <option value="1">1 mes</option>
+              <option value="6">6 Meses</option>
+              <option value="12">12 meses</option>
+              <option value="24">24 meses</option>
+              <option value="36">36 meses</option>
+              <option value="all">all</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+          {/* Tarjeta Aprobados */}
+          <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider">Aprobados ({approvedQuotesCount})</span>
+              <div className="font-display-lg text-display-lg text-emerald-950 font-extrabold">
+                {totalApproved.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-emerald-800">UF</span>
+              </div>
+            </div>
+            <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[32px]">check_circle</span>
+            </div>
+          </div>
+
+          {/* Tarjeta Enviados */}
+          <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Enviados ({sentQuotesCount})</span>
+              <div className="font-display-lg text-display-lg text-blue-950 font-extrabold">
+                {totalSent.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-blue-800">UF</span>
+              </div>
+            </div>
+            <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[32px]">send</span>
+            </div>
+          </div>
+
+          {/* Tarjeta Rechazados */}
+          <div className="bg-red-50/40 border border-red-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-label-md text-red-800 uppercase font-bold tracking-wider">Rechazados ({rejectedQuotesCount})</span>
+              <div className="font-display-lg text-display-lg text-red-950 font-extrabold">
+                {totalRejected.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-red-800">UF</span>
+              </div>
+            </div>
+            <div className="p-3 bg-red-100 rounded-full text-red-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[32px]">cancel</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Backdrop: View Quote */}
+      {isViewModalOpen && viewingQuote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
+          <div className="relative bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Visualizar Presupuesto #{viewingQuote.id}</h2>
+                <p className="text-body-sm text-on-surface-variant font-bold">Detalle completo de la cotización y facturación asociada.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsViewModalOpen(false);
+                  setViewingQuote(null);
+                }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-all"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-lg space-y-lg text-left">
+              {/* Grid principal */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-xl">
+                {/* Información General */}
+                <div className="space-y-md">
+                  <h3 className="text-title-md font-bold text-primary border-b pb-1">Información General</h3>
+                  <div className="grid grid-cols-2 gap-md text-body-md">
+                    <div>
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Cliente</span>
+                      <span className="font-bold text-on-surface">{viewingQuote.clientName}</span>
+                    </div>
+                    <div>
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Empresa</span>
+                      <span className="text-on-surface">{viewingQuote.company || '-'}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Título / Proyecto</span>
+                      <span className="text-on-surface">{viewingQuote.title}</span>
+                    </div>
+                    <div>
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Fecha Emisión</span>
+                      <span className="text-on-surface">{viewingQuote.date}</span>
+                    </div>
+                    <div>
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Validez</span>
+                      <span className="text-on-surface">{viewingQuote.validity}</span>
+                    </div>
+                    <div>
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Monto Total</span>
+                      <span className="font-extrabold text-primary text-headline-sm">
+                        {viewingQuote.amount.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Estado</span>
+                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${
+                        viewingQuote.status === 'Borrador'
+                          ? 'bg-slate-100 text-slate-700 border-slate-300'
+                          : viewingQuote.status === 'En revisión'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : viewingQuote.status === 'Enviado'
+                              ? 'bg-blue-100 text-blue-800 border-blue-200'
+                              : viewingQuote.status === 'Aprobado' || viewingQuote.status === 'Aprovado'
+                                ? 'bg-secondary-container text-on-secondary-container border-secondary/20'
+                                : 'bg-red-100 text-red-800 border-red-200'
+                      }`}>
+                        {viewingQuote.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Documentos de respaldo */}
+                  {viewingQuote.backupFiles && viewingQuote.backupFiles.length > 0 && (
+                    <div className="mt-md">
+                      <span className="block text-label-md text-on-surface-variant uppercase font-semibold mb-2">Respaldos</span>
+                      <div className="flex flex-wrap gap-2">
+                        {viewingQuote.backupFiles.map((file, idx) => (
+                          <a
+                            key={idx}
+                            href={file.url}
+                            download={file.name}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border rounded text-body-sm text-secondary transition-all"
+                            title={`Descargar ${file.name}`}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">
+                              {file.name.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
+                            </span>
+                            <span className="truncate max-w-[150px]">{file.name}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ítems del Presupuesto */}
+                <div className="space-y-md">
+                  <h3 className="text-title-md font-bold text-primary border-b pb-1">Ítems Detalle</h3>
+                  <div className="border rounded-xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-body-sm">
+                      <thead className="bg-slate-50 border-b">
+                        <tr>
+                          <th className="p-2 font-semibold text-on-surface-variant">Descripción</th>
+                          <th className="p-2 font-semibold text-on-surface-variant text-center">Cant.</th>
+                          <th className="p-2 font-semibold text-on-surface-variant text-right">Unitario (UF)</th>
+                          <th className="p-2 font-semibold text-on-surface-variant text-right">Total (UF)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {viewingQuote.items && viewingQuote.items.length > 0 ? (
+                          viewingQuote.items.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="p-2 text-on-surface">{item.description}</td>
+                              <td className="p-2 text-center text-on-surface">{item.qty}</td>
+                              <td className="p-2 text-right text-on-surface">
+                                {item.price.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-2 text-right font-bold text-on-surface">
+                                {(item.qty * item.price).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="4" className="p-4 text-center text-on-surface-variant italic">Sin ítems detallados.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de Cuotas para presupuestos Aprobados */}
+              {(viewingQuote.status === 'Aprobado' || viewingQuote.status === 'Aprovado') && (
+                <div className="space-y-md pt-lg border-t border-outline-variant">
+                  <h3 className="text-title-md font-bold text-primary flex items-center gap-2">
+                    <span className="material-symbols-outlined text-secondary">payments</span>
+                    <span>Plan de Cuotas y Facturación</span>
+                  </h3>
+                  
+                  {(() => {
+                    const billingTable = findQuoteBillingTable(viewingQuote.id);
+                    if (billingTable && billingTable.length > 0) {
+                      return (
+                        <div className="border rounded-xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-left text-body-sm">
+                            <thead className="bg-surface-container-low border-b sticky top-0 z-10">
+                              <tr>
+                                <th className="p-md font-semibold text-on-surface-variant">N° Cuota</th>
+                                <th className="p-md font-semibold text-on-surface-variant">Fecha de Cobro</th>
+                                <th className="p-md font-semibold text-on-surface-variant">Estado</th>
+                                <th className="p-md font-semibold text-on-surface-variant text-right">Monto (UF)</th>
+                                <th className="p-md font-semibold text-on-surface-variant">Comentario</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                              {billingTable.map((cuota, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50">
+                                  <td className="p-md font-bold text-primary">Cuota {cuota.numQuota}</td>
+                                  <td className="p-md text-on-surface">
+                                    {cuota.date ? cuota.date.split('-').reverse().join('/') : '-'}
+                                  </td>
+                                  <td className="p-md">
+                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${
+                                      cuota.status === 'Pagada'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : cuota.status === 'Factura emitida'
+                                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                          : 'bg-slate-100 text-slate-700 border-slate-350'
+                                    }`}>
+                                      {cuota.status || 'Por facturar'}
+                                    </span>
+                                  </td>
+                                  <td className="p-md text-right font-bold text-on-surface">
+                                    {cuota.uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
+                                  </td>
+                                  <td className="p-md text-on-surface-variant italic">
+                                    {cuota.comment || 'Facturación ordinaria'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="p-md bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-body-md">
+                          <span className="material-symbols-outlined text-[20px]">warning</span>
+                          <span>Este presupuesto está aprobado pero no se encontró un plan de cuotas registrado en el sistema.</span>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+              )}
+            </div>
+
+            <div className="p-lg border-t border-outline-variant flex justify-end bg-surface sticky bottom-0 z-10">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsViewModalOpen(false);
+                  setViewingQuote(null);
+                }}
+                className="px-md py-2 bg-primary text-white rounded-lg text-body-md hover:bg-opacity-90 active:scale-95 transition-all font-semibold"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Backdrop: New Quote Form */}
       {isModalOpen && (
@@ -1148,6 +1721,123 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
               </div>
 
+              {/* Sección de Edición de Cuotas (solo si el presupuesto está Aprobado) */}
+              {isExistingQuote && (existingQuoteObj?.status === 'Aprobado' || existingQuoteObj?.status === 'Aprovado') && (
+                <div className="space-y-md pt-lg border-t border-outline-variant">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-body-md font-bold text-primary flex items-center gap-2">
+                      <span className="material-symbols-outlined text-secondary">payments</span>
+                      <span>Plan de Cuotas y Facturación</span>
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={handleAddEditRow}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-white rounded text-body-sm hover:brightness-110 transition-all font-semibold active:scale-95 shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">add</span>
+                      <span>Agregar Cuota</span>
+                    </button>
+                  </div>
+
+                  {/* Advertencia si la suma no coincide con el total */}
+                  {(() => {
+                    const currentSum = editBillingTable.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
+                    const roundedSum = Math.round(currentSum * 100) / 100;
+                    const expectedTotal = Math.round((parseFloat(total) || 0) * 100) / 100;
+                    const diff = expectedTotal - roundedSum;
+                    
+                    if (Math.abs(diff) >= 0.02) {
+                      return (
+                        <div className="p-md bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-body-sm">
+                          <span className="material-symbols-outlined text-[20px]">warning</span>
+                          <span>
+                            La suma de las cuotas ({roundedSum.toFixed(2)} UF) no coincide con el total del presupuesto ({expectedTotal.toFixed(2)} UF). Diferencia: {diff.toFixed(2)} UF.
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {editBillingTable.length > 0 ? (
+                    <div className="border rounded-xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto custom-scrollbar bg-white">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-slate-50 border-b sticky top-0 z-10">
+                          <tr>
+                            <th className="p-2 border-b border-slate-200 text-center w-24 font-semibold text-on-surface-variant">N° Cuota</th>
+                            <th className="p-2 border-b border-slate-200 w-40 font-semibold text-on-surface-variant">Fecha de Cobro</th>
+                            <th className="p-2 border-b border-slate-200 w-40 font-semibold text-on-surface-variant">Estado</th>
+                            <th className="p-2 border-b border-slate-200 text-right w-32 font-semibold text-on-surface-variant">Monto (UF)</th>
+                            <th className="p-2 border-b border-slate-200 font-semibold text-on-surface-variant">Comentario / Descripción</th>
+                            <th className="p-2 border-b border-slate-200 text-center w-16 font-semibold text-on-surface-variant">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-body-sm">
+                          {editBillingTable.map((row, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="p-2 text-center font-bold text-primary">
+                                Cuota {row.numQuota}
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="date"
+                                  value={row.date}
+                                  onChange={(e) => handleEditRowChange(idx, 'date', e.target.value)}
+                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white"
+                                />
+                              </td>
+                              <td className="p-1">
+                                <select
+                                  value={row.status || 'Por facturar'}
+                                  onChange={(e) => handleEditRowChange(idx, 'status', e.target.value)}
+                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white cursor-pointer font-medium"
+                                >
+                                  <option value="Por facturar">Por facturar</option>
+                                  <option value="Factura emitida">Factura emitida</option>
+                                  <option value="Pagada">Pagada</option>
+                                </select>
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="number"
+                                  value={row.uf}
+                                  onChange={(e) => handleEditRowChange(idx, 'uf', e.target.value)}
+                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white text-right font-semibold"
+                                  step="0.01"
+                                />
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={row.comment || ''}
+                                  onChange={(e) => handleEditRowChange(idx, 'comment', e.target.value)}
+                                  placeholder="Ej: Mensualidad o Anticipo"
+                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white"
+                                />
+                              </td>
+                              <td className="p-1 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditRow(idx)}
+                                  className="p-1 hover:bg-red-50 rounded text-error hover:text-red-600 transition-all flex items-center justify-center mx-auto"
+                                  title="Eliminar cuota"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-md text-center text-on-surface-variant italic bg-slate-50 border border-dashed rounded-lg">
+                      No hay cuotas definidas. Haz clic en "Agregar Cuota" para registrar cobros.
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Footer Actions */}
               <div className="flex justify-end gap-md pt-lg border-t border-outline-variant">
                 <button
@@ -1287,7 +1977,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       {/* Modal: Aprobar Presupuesto y Crear Proyecto */}
       {isApproveModalOpen && approvingQuote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
-          <div className="relative bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up border border-outline-variant/30">
+          <div className="relative bg-white w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up border border-outline-variant/30">
             {/* Header */}
             <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
               <div>
@@ -1321,14 +2011,15 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-xl">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-xl">
                 
-                {/* Columna Izquierda: Información del Proyecto */}
-                <div className="space-y-lg">
+                {/* Columna Izquierda: Información del Proyecto y del Presupuesto */}
+                <div className="lg:col-span-5 space-y-lg">
+                  {/* Grupo 1: Datos del Proyecto */}
                   <div className="bg-slate-50/50 p-md rounded-xl border border-slate-200/60 space-y-md">
                     <h3 className="text-body-md font-bold text-primary flex items-center gap-2 border-b border-slate-200/60 pb-2">
                       <span className="material-symbols-outlined text-[20px] text-secondary">folder</span>
-                      Datos Generales del Proyecto
+                      Datos del Proyecto
                     </h3>
                     
                     {/* Campo: Nº y Nombre del proyecto */}
@@ -1361,28 +2052,6 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                       <span className="text-[11px] text-on-surface-variant/80">
                         Formato requerido: <strong>Nº Proyecto-Nombre - Cliente</strong>
                       </span>
-                    </div>
-
-                    {/* Fila: Nº Presupuesto y Cliente (Solo lectura) */}
-                    <div className="grid grid-cols-2 gap-md">
-                      <div className="flex flex-col gap-xs">
-                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Nº Presupuesto</label>
-                        <input
-                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 bg-slate-100/80 text-on-surface-variant/80 cursor-not-allowed outline-none"
-                          type="text"
-                          value={approvingQuote.id}
-                          readOnly
-                        />
-                      </div>
-                      <div className="flex flex-col gap-xs">
-                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Cliente</label>
-                        <input
-                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 bg-slate-100/80 text-on-surface-variant/80 cursor-not-allowed outline-none"
-                          type="text"
-                          value={cliente}
-                          readOnly
-                        />
-                      </div>
                     </div>
 
                     {/* Fila: Superficie y Rentabilidad */}
@@ -1421,75 +2090,160 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                       </div>
                     </div>
 
-                    {/* Fila: Valor Proyecto (UF) y Año */}
-                    <div className="grid grid-cols-2 gap-md">
-                      <div className="flex flex-col gap-xs">
-                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Valor Proyecto (UF)</label>
-                        <input
-                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-bold text-secondary"
-                          type="number"
-                          value={valorProyecto}
-                          onChange={(e) => handleValorProyectoChange(e.target.value)}
-                          min="0"
-                          step="0.01"
-                          required
-                        />
-                      </div>
-                      <div className="flex flex-col gap-xs">
-                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Año del Proyecto</label>
-                        <input
-                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
-                          type="number"
-                          value={anio}
-                          onChange={(e) => setAnio(e.target.value)}
-                          placeholder="Ej: 2026"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {/* Fila: Fecha inicio y Nº Cuotas */}
-                    <div className="grid grid-cols-2 gap-md">
-                      <div className="flex flex-col gap-xs">
-                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Inicio Facturación</label>
-                        <input
-                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-medium"
-                          type="date"
-                          value={fechaInicio}
-                          onChange={(e) => handleFechaInicioChange(e.target.value)}
-                          required
-                        />
-                      </div>
-                      <div className="flex flex-col gap-xs">
-                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Nº Cuotas</label>
-                        <input
-                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-medium"
-                          type="number"
-                          value={numCuotas}
-                          onChange={(e) => handleNumCuotasChange(e.target.value)}
-                          placeholder="Ej: 12"
-                          min="1"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {/* Descripción del Proyecto */}
+                    {/* Fila: Año del Proyecto */}
                     <div className="flex flex-col gap-xs">
-                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Descripción Corta</label>
+                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Año del Proyecto</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                        type="number"
+                        value={anio}
+                        onChange={(e) => setAnio(e.target.value)}
+                        placeholder="Ej: 2026"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Grupo 2: Datos del Presupuesto */}
+                  <div className="bg-slate-50/50 p-md rounded-xl border border-slate-200/60 space-y-md">
+                    <h3 className="text-body-md font-bold text-primary flex items-center gap-2 border-b border-slate-200/60 pb-2">
+                      <span className="material-symbols-outlined text-[20px] text-secondary">request_quote</span>
+                      Datos del Presupuesto
+                    </h3>
+
+                    {/* Fila: Nº Presupuesto y Cliente (Solo lectura) */}
+                    <div className="grid grid-cols-2 gap-md">
+                      <div className="flex flex-col gap-xs">
+                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Nº de Presupuesto</label>
+                        <input
+                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 bg-slate-100/80 text-on-surface-variant/80 cursor-not-allowed outline-none"
+                          type="text"
+                          value={approvingQuote.id}
+                          readOnly
+                        />
+                      </div>
+                      <div className="flex flex-col gap-xs">
+                        <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Cliente</label>
+                        <input
+                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 bg-slate-100/80 text-on-surface-variant/80 cursor-not-allowed outline-none"
+                          type="text"
+                          value={cliente}
+                          readOnly
+                        />
+                      </div>
+                    </div>
+
+                    {/* Fila: Valor Presupuesto (UF) */}
+                    <div className="flex flex-col gap-xs">
+                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Valor del Presupuesto (UF)</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-bold text-secondary"
+                        type="number"
+                        value={valorProyecto}
+                        onChange={(e) => handleValorProyectoChange(e.target.value)}
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </div>
+
+                    {/* Fila: Inicio Facturación */}
+                    <div className="flex flex-col gap-xs">
+                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Inicio Facturación</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-medium"
+                        type="date"
+                        value={fechaInicio}
+                        onChange={(e) => handleFechaInicioChange(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {/* Descripción del Presupuesto */}
+                    <div className="flex flex-col gap-xs">
+                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Descripción</label>
                       <textarea
                         className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
                         rows="2"
                         value={descripcion}
                         onChange={(e) => setDescripcion(e.target.value)}
-                        placeholder="Ingrese comentarios sobre los alcances del proyecto..."
+                        placeholder="Ingrese comentarios sobre los alcances del presupuesto..."
                       />
+                    </div>
+
+                    {/* Sección Respaldo */}
+                    <div className="space-y-sm pt-sm border-t border-slate-200/60">
+                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold block">
+                        Respaldo (Documentos asociados)
+                      </label>
+                      <div className="flex items-center gap-base">
+                        <label className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-outline-variant hover:border-secondary rounded bg-white hover:bg-slate-50 text-on-surface hover:text-primary transition-all cursor-pointer text-body-sm font-bold shadow-sm">
+                          <span className="material-symbols-outlined text-[18px] text-on-surface-variant">upload_file</span>
+                          <span>Subir Respaldo</span>
+                          <input
+                            type="file"
+                            multiple
+                            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            className="hidden"
+                            onChange={handleApproveModalFileUpload}
+                          />
+                        </label>
+                        <span className="text-[11px] text-on-surface-variant/70 italic">PDF o DOCX</span>
+                      </div>
+
+                      {approvingQuoteBackupFiles.length > 0 ? (
+                        <div className="space-y-xs mt-sm max-h-[140px] overflow-y-auto pr-xs custom-scrollbar">
+                          {approvingQuoteBackupFiles.map((file, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-outline-variant/30 shadow-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="material-symbols-outlined text-secondary flex-shrink-0 text-[18px]">
+                                  {file.name.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
+                                </span>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-body-sm font-bold truncate max-w-[150px]" title={file.name}>{file.name}</span>
+                                  <span className="text-[10px] text-on-surface-variant">{(file.size / 1024).toFixed(1)} KB</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewFile(file)}
+                                  className="p-1 hover:bg-slate-100 rounded text-secondary transition-all"
+                                  title="Ver archivo"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">visibility</span>
+                                </button>
+                                {file.url && (
+                                  <a
+                                    href={file.url}
+                                    download={file.name}
+                                    className="p-1 hover:bg-slate-100 rounded text-secondary transition-all"
+                                    title="Descargar"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">download</span>
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveModalRemoveFile(idx)}
+                                  className="p-1 hover:bg-slate-100 rounded text-error hover:text-red-600 transition-all"
+                                  title="Eliminar"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-body-sm text-on-surface-variant italic pt-xs">No hay archivos de respaldo adjuntos.</p>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Columna Derecha: Tabla de Facturación */}
-                <div className="space-y-lg flex flex-col h-full">
+                <div className="lg:col-span-7 space-y-lg flex flex-col h-full">
                   <div className="bg-slate-50/50 p-md rounded-xl border border-slate-200/60 space-y-md flex-grow flex flex-col">
                     <h3 className="text-body-md font-bold text-primary flex items-center gap-2 border-b border-slate-200/60 pb-2">
                       <span className="material-symbols-outlined text-[20px] text-secondary">calendar_month</span>
@@ -1502,17 +2256,24 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                           <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-100 text-slate-700 text-label-sm uppercase font-bold sticky top-0">
                               <tr>
-                                <th className="p-2 border-b border-slate-200 text-center w-12">Cuota</th>
+                                <th className="p-2 border-b border-slate-200 text-center w-20">Cuotas</th>
                                 <th className="p-2 border-b border-slate-200">Fecha</th>
-                                <th className="p-2 border-b border-slate-200 text-right w-24">UF</th>
+                                <th className="p-2 border-b border-slate-200 text-right w-28">UF</th>
                                 <th className="p-2 border-b border-slate-200">Comentario</th>
+                                <th className="p-2 border-b border-slate-200 text-center w-12">Acción</th>
                               </tr>
                             </thead>
                             <tbody className="text-body-sm divide-y divide-slate-100">
                               {billingTable.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-slate-50/50">
-                                  <td className="p-2 font-bold text-slate-500 text-center w-12 bg-slate-50/40">
-                                    {row.numQuota}
+                                  <td className="p-1 w-20 text-center">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={row.cuotas}
+                                      onChange={(e) => handleRowChange(idx, 'cuotas', e.target.value)}
+                                      className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center font-bold"
+                                    />
                                   </td>
                                   <td className="p-1">
                                     <input
@@ -1522,7 +2283,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                                       className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
                                     />
                                   </td>
-                                  <td className="p-1 w-24">
+                                  <td className="p-1 w-28">
                                     <input
                                       type="number"
                                       value={row.uf}
@@ -1540,41 +2301,70 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                                       className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
                                     />
                                   </td>
+                                  <td className="p-1 w-12 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveRow(idx)}
+                                      className="p-1 hover:bg-red-50 rounded text-error hover:text-red-600 transition-all flex items-center justify-center mx-auto"
+                                      title="Eliminar fila"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                                    </button>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                         </div>
 
+                        {/* Add Row Button */}
+                        <div className="flex justify-start mt-2">
+                          <button
+                            type="button"
+                            onClick={handleAddRow}
+                            className="px-3 py-1.5 bg-secondary/10 hover:bg-secondary/20 text-secondary text-body-sm font-bold rounded-lg transition-all flex items-center gap-1 shadow-sm"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                            <span>Agregar Fila</span>
+                          </button>
+                        </div>
+
                         {/* Verification Total Bar */}
                         {(() => {
-                          const currentSum = billingTable.reduce((acc, r) => acc + (parseFloat(r.uf) || 0), 0);
+                          const currentSum = billingTable.reduce((acc, r) => acc + ((parseInt(r.cuotas) || 1) * (parseFloat(r.uf) || 0)), 0);
                           const roundedSum = Math.round(currentSum * 100) / 100;
                           const expectedTotal = Math.round((parseFloat(valorProyecto) || 0) * 100) / 100;
                           const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
+                          const totalCuotas = billingTable.reduce((acc, r) => acc + (parseInt(r.cuotas) || 1), 0);
                           return (
-                            <div className={`mt-3 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${
+                            <div className={`mt-3 p-3 rounded-lg flex flex-col gap-2 font-bold text-body-sm border ${
                               isMatch 
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
                                 : 'bg-amber-50 text-amber-800 border-amber-200'
                             }`}>
-                              <div className="flex flex-wrap gap-x-md gap-y-1">
-                                <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
-                                <span className="text-slate-350">/</span>
-                                <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
+                              <div className="flex flex-wrap justify-between items-center gap-2">
+                                <div className="flex flex-wrap gap-x-md gap-y-1">
+                                  <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
+                                  <span className="text-slate-350">/</span>
+                                  <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
+                                </div>
+                                <div>
+                                  {isMatch ? (
+                                    <span className="flex items-center gap-1 text-emerald-600">
+                                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                      Montos coinciden
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-amber-600">
+                                      <span className="material-symbols-outlined text-[18px]">warning</span>
+                                      Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div>
-                                {isMatch ? (
-                                  <span className="flex items-center gap-1 text-emerald-600">
-                                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                    Montos coinciden
-                                  </span>
-                                ) : (
-                                  <span className="flex items-center gap-1 text-amber-600">
-                                    <span className="material-symbols-outlined text-[18px]">warning</span>
-                                    Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
-                                  </span>
-                                )}
+                              <div className="border-t border-slate-200/50 pt-2 flex justify-between items-center text-[11px] text-on-surface-variant/80">
+                                <span>Total de cuotas (resultante):</span>
+                                <span className="font-extrabold text-primary">{totalCuotas} {totalCuotas === 1 ? 'cuota' : 'cuotas'}</span>
                               </div>
                             </div>
                           );
