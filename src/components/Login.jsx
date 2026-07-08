@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import logoSpr from '../assets/logo SPR.PNG';
+import { supabase } from '../utils/supabaseClient';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('admin@spoerer.cl');
@@ -7,20 +8,65 @@ export default function Login({ onLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setLoginError('');
 
-    // Simulate network delay
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 1. Intentamos iniciar sesión con Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password
+      });
+
+      if (authError) {
+        throw new Error(authError.message);
+      }
+
+      // 2. Buscamos el perfil del usuario para obtener el rol y estado
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authData.user.id)
+        .maybeSingle();
+
+      if (profileError || !profile) {
+        throw new Error("No se encontró un perfil de usuario asociado.");
+      }
+
+      // 3. Verificamos si la cuenta está activa
+      if (profile.status !== 'Active') {
+        await supabase.auth.signOut();
+        throw new Error("Su cuenta se encuentra inactiva. Contacte al administrador.");
+      }
+
       setIsSuccess(true);
-
       setTimeout(() => {
-        onLogin({ email, name: 'Admin User', role: 'System Administrator' });
+        setIsLoading(false);
+        onLogin({ 
+          email: profile.email, 
+          name: profile.name, 
+          role: profile.role 
+        });
       }, 1000);
-    }, 1500);
+    } catch (err) {
+      console.error("Error de inicio de sesión:", err);
+      setIsLoading(false);
+      
+      let errMsg = err.message;
+      if (err.message === 'Invalid login credentials') {
+        errMsg = "Las credenciales ingresadas no son válidas. Por favor, verifique su correo y contraseña.";
+      } else if (err.message.includes('Email not confirmed')) {
+        errMsg = "Su correo electrónico no ha sido verificado todavía.";
+      } else if (err.message.includes('Email rate limit exceeded') || err.message.includes('rate limit')) {
+        errMsg = "Se ha excedido el límite de intentos. Por favor, intente más tarde.";
+      }
+      
+      setLoginError(errMsg);
+    }
   };
 
   return (
@@ -39,6 +85,16 @@ export default function Login({ onLogin }) {
             <h1 className="font-headline-md text-headline-md text-primary">Bienvenido al Sistema</h1>
             <p className="font-body-md text-body-md text-on-surface-variant">Ingrese sus credenciales para acceder</p>
           </div>
+
+          {loginError && (
+            <div className="bg-error-container/20 border border-error/30 text-error p-md rounded-lg flex items-start gap-sm text-left animate-fade-in">
+              <span className="material-symbols-outlined text-[20px] flex-shrink-0 mt-0.5">error</span>
+              <div className="font-body-sm text-body-sm">
+                <span className="font-bold block">Error de acceso</span>
+                {loginError}
+              </div>
+            </div>
+          )}
 
           {/* Form */}
           <form className="flex flex-col gap-md" onSubmit={handleSubmit}>

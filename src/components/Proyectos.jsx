@@ -1,7 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import mammoth from 'mammoth';
 
-export default function Proyectos({ projects, setProjects, clients }) {
+export default function Proyectos({ 
+  projects, 
+  setProjects, 
+  clients,
+  budgets,
+  installments,
+  extraCosts,
+  onUpdateInstallment,
+  onDisassociateBudget,
+  onAddExtraCost,
+  onDeleteExtraCost,
+  onSaveProject,
+  onDeleteProject,
+  onSaveInstallments
+}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedProjectId, setExpandedProjectId] = useState(null);
   
@@ -14,6 +28,13 @@ export default function Proyectos({ projects, setProjects, clients }) {
   const [extraCostUF, setExtraCostUF] = useState('');
   const [extraCostSuperficie, setExtraCostSuperficie] = useState('');
   const [extraCostComment, setExtraCostComment] = useState('');
+
+  // Local state for billing installments to allow inline typing before clicking Save
+  const [localInstallments, setLocalInstallments] = useState([]);
+
+  useEffect(() => {
+    setLocalInstallments(installments);
+  }, [installments]);
 
   // Handle DOCX preview loading and conversion
   useEffect(() => {
@@ -64,14 +85,19 @@ export default function Proyectos({ projects, setProjects, clients }) {
     );
   });
 
-  // Calculate KPIs
+  // Calculate KPIs using flat arrays
   const totalProjects = projects.length;
-  const totalUF = projects.reduce((acc, p) => 
-    acc + p.budgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0)
-  , 0);
+  
+  const totalUF = projects.reduce((acc, p) => {
+    const projectBudgets = budgets.filter(b => b.projectId === p.id);
+    const budgetSum = projectBudgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+    return acc + budgetSum;
+  }, 0);
+
   const avgProfitability = projects.length > 0 
     ? (projects.reduce((acc, p) => acc + (parseFloat(p.rentabilidad) || 0), 0) / projects.length).toFixed(1)
     : 0;
+
   const totalSurface = projects.reduce((acc, p) => acc + (parseFloat(p.superficie) || 0), 0);
 
   const toggleExpand = (id) => {
@@ -100,98 +126,59 @@ export default function Proyectos({ projects, setProjects, clients }) {
       return;
     }
 
-    setProjects(prev => prev.map(p => {
-      if (p.projectName === editingProject.projectName) {
-        return {
-          ...p,
-          projectName: editName,
-          superficie: parseFloat(editSuperficie) || 0,
-          rentabilidad: parseFloat(editRentabilidad) || 0,
-          anio: parseInt(editAnio) || new Date().getFullYear(),
-          cliente: editCliente
-        };
-      }
-      return p;
-    }));
+    // Parse project number and name from semantic string
+    const nameParts = editName.split('-');
+    const projectNumber = nameParts[0]?.trim() || '';
+    const rawProjectName = nameParts.slice(1).join('-').split(' - ')[0]?.trim() || editName;
+
+    // Resolve client
+    const selectedCli = clients.find(c => c.company === editCliente);
+
+    onSaveProject({
+      id: editingProject.id,
+      projectNumber: projectNumber,
+      rawProjectName: rawProjectName,
+      superficie: parseFloat(editSuperficie) || 0,
+      rentabilidad: parseFloat(editRentabilidad) || 0,
+      anio: parseInt(editAnio) || new Date().getFullYear(),
+      clientId: selectedCli ? selectedCli.id : editingProject.clientId,
+      status: editingProject.status
+    });
 
     setEditingProject(null);
   };
 
-  // Save billing table edits (inline saving)
-  const handleSaveBillingTable = (projectIdx, budgetIdx, updatedTable) => {
-    const budget = projects[projectIdx].budgets[budgetIdx];
-    const currentSum = updatedTable.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
+  // Save billing table edits (batch saving)
+  const handleSaveBillingTable = (budgetId, budgetAmount) => {
+    const budgetInsts = localInstallments.filter(i => i.origin_budget_id === budgetId);
+    const currentSum = budgetInsts.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
     const roundedSum = Math.round(currentSum * 100) / 100;
-    const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
+    const expectedTotal = Math.round((parseFloat(budgetAmount) || 0) * 100) / 100;
     
     if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
       alert(`Error al guardar: La suma de las cuotas (${roundedSum.toFixed(2)} UF) no es igual al total requerido del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
       return;
     }
 
-    setProjects(prev => prev.map((p, pIdx) => {
-      if (pIdx === projectIdx) {
-        const updatedBudgets = p.budgets.map((b, bIdx) => {
-          if (bIdx === budgetIdx) {
-            return {
-              ...b,
-              billingTable: updatedTable
-            };
-          }
-          return b;
-        });
-        return {
-          ...p,
-          budgets: updatedBudgets
-        };
-      }
-      return p;
-    }));
-    alert("¡Tabla de facturación actualizada correctamente!");
+    onSaveInstallments(budgetInsts);
   };
 
-  const handleRowFieldChange = (projectIdx, budgetIdx, rowIndex, field, value) => {
-    setProjects(prev => prev.map((p, pIdx) => {
-      if (pIdx === projectIdx) {
-        const updatedBudgets = p.budgets.map((b, bIdx) => {
-          if (bIdx === budgetIdx) {
-            const updatedTable = b.billingTable.map((row, rIdx) => {
-              if (rIdx === rowIndex) {
-                return {
-                  ...row,
-                  [field]: field === 'uf' ? (parseFloat(value) || 0) : value
-                };
-              }
-              return row;
-            });
-            return {
-              ...b,
-              billingTable: updatedTable
-            };
-          }
-          return b;
-        });
+  const handleRowFieldChange = (installmentId, field, value) => {
+    setLocalInstallments(prev => prev.map(inst => {
+      if (inst.id === installmentId) {
         return {
-          ...p,
-          budgets: updatedBudgets
+          ...inst,
+          [field]: field === 'uf' ? (parseFloat(value) || 0) : value
         };
       }
-      return p;
+      return inst;
     }));
   };
 
   // Disassociate budget
-  const handleDisassociateBudget = (projectName, quoteId) => {
-    if (confirm(`¿Está seguro de que desea desasociar el presupuesto #${quoteId} de este proyecto?`)) {
-      setProjects(prev => prev.map(p => {
-        if (p.projectName === projectName) {
-          return {
-            ...p,
-            budgets: p.budgets.filter(b => b.quoteId !== quoteId)
-          };
-        }
-        return p;
-      }).filter(p => p.budgets.length > 0)); // If a project has no budgets left, delete it.
+  const handleDisassociateBudgetLocal = (budgetId) => {
+    if (confirm(`¿Está seguro de que desea desasociar este presupuesto del proyecto?`)) {
+      onDisassociateBudget(budgetId);
     }
   };
 
@@ -203,67 +190,35 @@ export default function Proyectos({ projects, setProjects, clients }) {
     setExtraCostComment('');
   };
 
-  const handleAddExtraCost = (e) => {
+  const handleAddExtraCostLocal = (e) => {
     e.preventDefault();
     if (!extraCostUF) {
       alert("Por favor ingrese el Costo Extra (UF)");
       return;
     }
 
-    const newCost = {
-      id: Date.now().toString(),
+    onAddExtraCost({
+      project_id: extraCostProject.id,
       amount: parseFloat(extraCostUF) || 0,
       superficie: parseFloat(extraCostSuperficie) || 0,
       comment: extraCostComment || ''
-    };
+    });
 
-    setProjects(prev => prev.map(p => {
-      if (p.projectName === extraCostProject.projectName) {
-        const updatedCosts = [...(p.extraCosts || []), newCost];
-        // Sync extraCostProject so that the list in the modal updates immediately
-        setExtraCostProject(prevProj => ({
-          ...prevProj,
-          extraCosts: updatedCosts
-        }));
-        return {
-          ...p,
-          extraCosts: updatedCosts
-        };
-      }
-      return p;
-    }));
-
-    // Reset fields to allow adding another cost extra one by one
+    // Reset fields to allow adding another cost extra
     setExtraCostUF('');
     setExtraCostSuperficie('');
     setExtraCostComment('');
   };
 
-  const handleDeleteExtraCost = (costId) => {
+  const handleDeleteExtraCostLocal = (costId) => {
     if (confirm("¿Está seguro de que desea eliminar este costo extra?")) {
-      setProjects(prev => prev.map(p => {
-        if (p.projectName === extraCostProject.projectName) {
-          const updatedCosts = (p.extraCosts || []).filter(c => c.id !== costId);
-          // Sync extraCostProject so that the list in the modal updates immediately
-          setExtraCostProject(prevProj => ({
-            ...prevProj,
-            extraCosts: updatedCosts
-          }));
-          return {
-            ...p,
-            extraCosts: updatedCosts
-          };
-        }
-        return p;
-      }));
+      onDeleteExtraCost(costId);
     }
   };
 
   // Delete project
-  const handleDeleteProject = (projectName) => {
-    if (confirm(`¿Está seguro de que desea eliminar el proyecto "${projectName}"? Se perderán todas sus tablas de facturación.`)) {
-      setProjects(prev => prev.filter(p => p.projectName !== projectName));
-    }
+  const handleDeleteProjectLocal = (id, name) => {
+    onDeleteProject(id);
   };
 
   return (
@@ -298,16 +253,14 @@ export default function Proyectos({ projects, setProjects, clients }) {
           </div>
           <div className="flex flex-col">
             <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Monto Total Presupuestos</span>
-            <span className="font-headline-md text-headline-md text-secondary font-black mt-1">
-              {totalUF.toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} UF
-            </span>
+            <span className="font-headline-md text-headline-md text-secondary font-black mt-1">{totalUF.toLocaleString('es-CL', { maximumFractionDigits: 1 })} <span className="text-body-sm font-semibold">UF</span></span>
           </div>
         </div>
 
         {/* KPI 3 */}
         <div className="glass-card rounded-xl p-lg shadow-sm border border-outline-variant/30 flex items-center gap-md">
-          <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">trending_up</span>
+          <div className="w-12 h-12 bg-indigo-55 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-65 text-indigo-75 flex-shrink-0">
+            <span className="material-symbols-outlined text-[28px]">monitoring</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Rentabilidad Promedio</span>
@@ -318,44 +271,46 @@ export default function Proyectos({ projects, setProjects, clients }) {
         {/* KPI 4 */}
         <div className="glass-card rounded-xl p-lg shadow-sm border border-outline-variant/30 flex items-center gap-md">
           <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">square_foot</span>
+            <span className="material-symbols-outlined text-[28px]">architecture</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Superficie Total</span>
-            <span className="font-headline-md text-headline-md text-emerald-600 font-black mt-1">
-              {totalSurface.toLocaleString('es-CL')} m²
-            </span>
+            <span className="font-headline-md text-headline-md text-emerald-600 font-black mt-1">{totalSurface.toLocaleString('es-CL')} <span className="text-body-sm font-semibold">m²</span></span>
           </div>
         </div>
       </section>
 
-      {/* Search Bar */}
-      <section className="glass-card rounded-xl p-md flex items-center justify-between gap-md shadow-sm">
-        <div className="flex-grow max-w-md">
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-            <input
-              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none"
-              placeholder="Buscar por código, cliente o año..."
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+      {/* Search and Filters */}
+      <section className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-md bg-surface-variant/20 p-md rounded-xl border border-outline-variant/20 shadow-xs">
+        <div className="flex flex-1 max-w-md items-center gap-2 bg-white rounded-lg px-md py-sm border border-outline-variant/40 focus-within:border-primary transition-all">
+          <span className="material-symbols-outlined text-on-surface-variant text-[20px]">search</span>
+          <input 
+            type="text" 
+            placeholder="Buscar por código, nombre o cliente..." 
+            className="w-full bg-transparent border-0 outline-none text-body-md text-on-surface placeholder:text-on-surface-variant/60"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
       </section>
 
       {/* Projects List */}
       <div className="space-y-md">
         {filteredProjects.length > 0 ? (
-          filteredProjects.map((project, pIdx) => {
-            const isExpanded = expandedProjectId === project.projectName;
-            const projectTotalUF = project.budgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
-            const projectExtraCostsUF = (project.extraCosts || []).reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+          filteredProjects.map((project) => {
+            const isExpanded = expandedProjectId === project.id;
+            
+            // Filter budgets associated with this project
+            const projectBudgets = budgets.filter(b => b.projectId === project.id);
+            const projectTotalUF = projectBudgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
+            
+            // Filter extra costs associated with this project
+            const projectExtraCosts = extraCosts.filter(ec => ec.project_id === project.id);
+            const projectExtraCostsUF = projectExtraCosts.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
 
             return (
               <div 
-                key={project.projectName} 
+                key={project.id} 
                 className="bg-white rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden transition-all hover:shadow"
               >
                 {/* Project Summary Header */}
@@ -414,14 +369,14 @@ export default function Proyectos({ projects, setProjects, clients }) {
                         <span className="material-symbols-outlined text-[20px]">edit</span>
                       </button>
                       <button
-                        onClick={() => handleDeleteProject(project.projectName)}
+                        onClick={() => handleDeleteProjectLocal(project.id, project.projectName)}
                         className="p-2 hover:bg-red-50 rounded text-error hover:text-red-700 transition-all"
                         title="Eliminar proyecto por completo"
                       >
                         <span className="material-symbols-outlined text-[20px]">delete</span>
                       </button>
                       <button
-                        onClick={() => toggleExpand(project.projectName)}
+                        onClick={() => toggleExpand(project.id)}
                         className={`p-2 hover:bg-slate-100 rounded text-secondary transition-all flex items-center gap-1 font-bold text-body-sm ${
                           isExpanded ? 'bg-slate-100' : ''
                         }`}
@@ -438,362 +393,276 @@ export default function Proyectos({ projects, setProjects, clients }) {
                 {/* Collapsible Details: Associated Budgets and Billing Tables */}
                 {isExpanded && (
                   <div className="border-t border-outline-variant/20 p-md sm:p-lg space-y-lg bg-white">
+                    {/* Costos Extras Detallados */}
+                    {projectExtraCosts.length > 0 && (
+                      <div className="border border-amber-200 rounded-xl p-md bg-amber-50/10 space-y-sm">
+                        <h4 className="font-label-md text-label-md text-amber-700 uppercase tracking-widest font-bold flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                          Costos Adicionales Registrados
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-md">
+                          {projectExtraCosts.map((cost) => (
+                            <div key={cost.id} className="p-md bg-white border border-slate-200 rounded-lg flex justify-between items-start gap-md shadow-xs">
+                              <div>
+                                <p className="text-body-sm font-semibold text-slate-800">{cost.comment || 'Sin descripción'}</p>
+                                <div className="flex gap-2 text-label-xs text-on-surface-variant/80 mt-1">
+                                  <span>{cost.superficie} m²</span>
+                                  <span>•</span>
+                                  <span className="font-bold text-amber-600">{cost.amount} UF</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleDeleteExtraCostLocal(cost.id)}
+                                className="p-1 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center flex-shrink-0"
+                                title="Eliminar costo extra"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <h4 className="font-label-md text-label-md text-primary uppercase tracking-widest font-bold border-b pb-2 flex items-center gap-2">
                       <span className="material-symbols-outlined text-[18px]">receipt_long</span>
                       Presupuestos y Planificación de Cuotas Asociadas
                     </h4>
 
-                    {project.budgets.map((budget, bIdx) => (
-                      <div key={budget.quoteId} className="border border-slate-200 rounded-xl p-md space-y-md shadow-sm bg-slate-50/20">
-                        {/* Budget Info Header */}
-                        <div className="flex justify-between items-start gap-md pb-md border-b border-slate-100">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-body-md text-primary">
-                                Presupuesto #{budget.quoteId}
-                              </span>
-                              <span className="text-xs bg-secondary/10 text-secondary font-bold px-2 py-0.5 rounded-full">
-                                {budget.amount} UF
-                              </span>
-                            </div>
-                            <p className="text-body-sm text-on-surface-variant leading-relaxed">
-                              <strong>Descripción:</strong> {budget.description || 'Sin descripción'}
-                            </p>
+                    {projectBudgets.map((budget) => {
+                      const budgetInstallments = localInstallments.filter(
+                        i => i.project_id === project.id && i.origin_budget_id === budget.id
+                      );
 
-                            {budget.backupFiles && budget.backupFiles.length > 0 && (
-                              <div className="mt-md pt-sm border-t border-slate-100/80 space-y-xs">
-                                <span className="text-[11px] text-on-surface-variant font-bold block uppercase tracking-wider">
-                                  Documentos de Respaldo
+                      return (
+                        <div key={budget.id} className="border border-slate-200 rounded-xl p-md space-y-md shadow-sm bg-slate-50/20">
+                          {/* Budget Info Header */}
+                          <div className="flex justify-between items-start gap-md pb-md border-b border-slate-100">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-body-md text-primary">
+                                  Presupuesto #{budget.title}
                                 </span>
-                                <div className="flex flex-wrap gap-2">
-                                  {budget.backupFiles.map((file, fIdx) => (
-                                    <div key={fIdx} className="flex items-center gap-2 p-1.5 px-3 bg-white rounded border border-outline-variant/30 shadow-xs max-w-xs">
-                                      <span className="material-symbols-outlined text-secondary flex-shrink-0 text-[18px]">
-                                        {file.name.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
-                                      </span>
-                                      <span className="text-body-sm font-bold truncate max-w-[130px]" title={file.name}>
-                                        {file.name}
-                                      </span>
-                                      <div className="flex items-center gap-0.5 ml-2 border-l pl-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => setPreviewFile(file)}
-                                          className="p-1 hover:bg-slate-100 rounded text-secondary transition-all"
-                                          title="Ver archivo"
-                                        >
-                                          <span className="material-symbols-outlined text-[16px]">visibility</span>
-                                        </button>
-                                        {file.url && (
-                                          <a
-                                            href={file.url}
-                                            download={file.name}
-                                            className="p-1 hover:bg-slate-100 rounded text-secondary transition-all"
-                                            title="Descargar"
-                                          >
-                                            <span className="material-symbols-outlined text-[16px]">download</span>
-                                          </a>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
+                                <span className="text-xs bg-secondary/10 text-secondary font-bold px-2 py-0.5 rounded-full">
+                                  {budget.amount} UF
+                                </span>
                               </div>
-                            )}
-                          </div>
-                          
-                          <button
-                            type="button"
-                            onClick={() => handleDisassociateBudget(project.projectName, budget.quoteId)}
-                            className="text-error hover:bg-red-50 px-2 py-1 rounded text-body-sm transition-all flex items-center gap-1 font-semibold"
-                            title="Desasociar presupuesto"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">link_off</span>
-                            <span>Desasociar</span>
-                          </button>
-                        </div>
-
-                        {/* Billing Table */}
-                        <div className="space-y-sm">
-                          <h5 className="text-body-sm font-bold text-slate-700 flex items-center gap-1.5">
-                            <span className="material-symbols-outlined text-[16px] text-slate-500">list_alt</span>
-                            Detalle de Cuotas ({budget.numCuotas} cuotas)
-                          </h5>
-
-                          <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-sm">
-                            <table className="w-full text-left border-collapse">
-                              <thead className="bg-slate-100 text-slate-700 text-label-sm font-bold uppercase font-bold sticky top-0">
-                                <tr>
-                                  <th className="p-2.5 border-b border-slate-200 text-center w-12">Cuota</th>
-                                  <th className="p-2.5 border-b border-slate-200">Fecha</th>
-                                  <th className="p-2.5 border-b border-slate-200 w-36">Estado</th>
-                                  <th className="p-2.5 border-b border-slate-200 text-right w-28">UF</th>
-                                  <th className="p-2.5 border-b border-slate-200">Comentario / Estado de Hito</th>
-                                </tr>
-                              </thead>
-                              <tbody className="text-body-sm divide-y divide-slate-100">
-                                {budget.billingTable && budget.billingTable.map((row, rIdx) => (
-                                  <tr key={rIdx} className="hover:bg-slate-50/40">
-                                    <td className="p-2.5 font-bold text-slate-500 text-center bg-slate-50/50">
-                                      {row.numQuota}
-                                    </td>
-                                    <td className="p-1.5">
-                                      <input
-                                        type="date"
-                                        value={row.date}
-                                        onChange={(e) => handleRowFieldChange(pIdx, bIdx, rIdx, 'date', e.target.value)}
-                                        className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
-                                      />
-                                    </td>
-                                    <td className="p-1.5 w-36">
-                                      <select
-                                        value={row.status || 'Por facturar'}
-                                        onChange={(e) => handleRowFieldChange(pIdx, bIdx, rIdx, 'status', e.target.value)}
-                                        className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm cursor-pointer font-medium"
-                                      >
-                                        <option value="Por facturar">Por facturar</option>
-                                        <option value="Factura emitida">Factura emitida</option>
-                                        <option value="Pagada">Pagada</option>
-                                      </select>
-                                    </td>
-                                    <td className="p-1.5 w-28">
-                                      <input
-                                        type="number"
-                                        value={row.uf}
-                                        onChange={(e) => handleRowFieldChange(pIdx, bIdx, rIdx, 'uf', e.target.value)}
-                                        className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-right"
-                                        step="0.01"
-                                      />
-                                    </td>
-                                    <td className="p-1.5">
-                                      <input
-                                        type="text"
-                                        value={row.comment || ''}
-                                        onChange={(e) => handleRowFieldChange(pIdx, bIdx, rIdx, 'comment', e.target.value)}
-                                        placeholder="Agregar comentario..."
-                                        className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
-                                      />
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-
-                          {/* Verification Total Bar */}
-                          {(() => {
-                            const currentSum = budget.billingTable.reduce((acc, r) => acc + (parseFloat(r.uf) || 0), 0);
-                            const roundedSum = Math.round(currentSum * 100) / 100;
-                            const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
-                            const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
-                            return (
-                              <div className={`mt-3 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${
-                                isMatch 
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                                  : 'bg-amber-50 text-amber-800 border-amber-200'
-                              }`}>
-                                <div className="flex flex-wrap gap-x-md gap-y-1">
-                                  <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
-                                  <span className="text-slate-350">/</span>
-                                  <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
-                                </div>
-                                <div>
-                                  {isMatch ? (
-                                    <span className="flex items-center gap-1 text-emerald-600">
-                                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                      Montos coinciden
-                                    </span>
-                                  ) : (
-                                    <span className="flex items-center gap-1 text-amber-600">
-                                      <span className="material-symbols-outlined text-[18px]">warning</span>
-                                      Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })()}
-
-                          {/* Save Changes Button */}
-                          <div className="flex justify-end pt-sm">
+                              <p className="text-body-sm text-on-surface-variant leading-relaxed">
+                                <strong>Monto total:</strong> {budget.amount} UF ({budget.validity})
+                              </p>
+                            </div>
+                            
                             <button
                               type="button"
-                              onClick={() => handleSaveBillingTable(pIdx, bIdx, budget.billingTable)}
-                              className="px-4 py-1.5 bg-secondary text-white text-body-sm font-bold rounded-lg hover:brightness-105 transition-all shadow-sm flex items-center gap-1"
+                              onClick={() => handleDisassociateBudgetLocal(budget.id)}
+                              className="text-error hover:bg-red-50 px-2 py-1 rounded text-body-sm transition-all flex items-center gap-1 font-semibold"
+                              title="Desasociar presupuesto"
                             >
-                              <span className="material-symbols-outlined text-[16px]">save</span>
-                              <span>Guardar Facturación</span>
+                              <span className="material-symbols-outlined text-[16px]">link_off</span>
+                              <span>Desasociar</span>
                             </button>
                           </div>
-                        </div>
-                      </div>
-                    ))}
 
-                    {/* Costos Extras Section */}
-                    <div className="border-t border-outline-variant/20 pt-md space-y-md">
-                      <h4 className="font-label-md text-label-md text-primary uppercase tracking-widest font-bold border-b pb-2 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[18px]">add_card</span>
-                        Detalle de Costos Extras del Proyecto
-                      </h4>
+                          {/* Billing Table */}
+                          <div className="space-y-sm">
+                            <h5 className="text-body-sm font-bold text-slate-700 flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[16px] text-slate-500">list_alt</span>
+                              Detalle de Cuotas ({budgetInstallments.length} cuotas)
+                            </h5>
 
-                      {project.extraCosts && project.extraCosts.length > 0 ? (
-                        <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-sm">
-                          <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-100 text-slate-700 text-label-sm font-bold uppercase sticky top-0">
-                              <tr>
-                                <th className="p-2.5 border-b border-slate-200">Comentario</th>
-                                <th className="p-2.5 border-b border-slate-200 text-right w-36">Superficie (m²)</th>
-                                <th className="p-2.5 border-b border-slate-200 text-right w-36">Costo Extra (UF)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="text-body-sm divide-y divide-slate-100">
-                              {project.extraCosts.map((cost) => (
-                                <tr key={cost.id} className="hover:bg-slate-50/40">
-                                  <td className="p-2.5 text-on-surface">
-                                    {cost.comment || <span className="text-on-surface-variant/30 italic">Sin comentario</span>}
-                                  </td>
-                                  <td className="p-2.5 text-right font-medium text-on-surface">
-                                    {cost.superficie ? `${cost.superficie.toLocaleString('es-CL')} m²` : '0 m²'}
-                                  </td>
-                                  <td className="p-2.5 text-right font-semibold text-secondary">
-                                    {cost.amount.toLocaleString('es-CL', { minimumFractionDigits: 2 })} UF
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr className="bg-slate-50/80 font-bold border-t border-slate-200 text-body-sm">
-                                <td className="p-2.5 text-on-surface">Total Costos Extras</td>
-                                <td className="p-2.5 text-right text-on-surface">
-                                  {project.extraCosts.reduce((sum, c) => sum + (c.superficie || 0), 0).toLocaleString('es-CL')} m²
-                                </td>
-                                <td className="p-2.5 text-right text-secondary">
-                                  {project.extraCosts.reduce((sum, c) => sum + (c.amount || 0), 0).toLocaleString('es-CL', { minimumFractionDigits: 2 })} UF
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                            <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-sm">
+                              <table className="w-full text-left border-collapse">
+                                <thead className="bg-slate-100 text-slate-700 text-label-sm font-bold uppercase sticky top-0">
+                                  <tr>
+                                    <th className="p-2.5 border-b border-slate-200 text-center w-12">Cuota</th>
+                                    <th className="p-2.5 border-b border-slate-200">Fecha Planificada</th>
+                                    <th className="p-2.5 border-b border-slate-200 w-36">Estado</th>
+                                    <th className="p-2.5 border-b border-slate-200 text-right w-28">UF</th>
+                                    <th className="p-2.5 border-b border-slate-200">Comentario / Estado de Hito</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="text-body-sm divide-y divide-slate-100">
+                                  {budgetInstallments.map((row) => (
+                                    <tr key={row.id} className="hover:bg-slate-50/40">
+                                      <td className="p-2.5 font-bold text-slate-500 text-center bg-slate-50/50">
+                                        {row.numQuota}
+                                      </td>
+                                      <td className="p-1.5">
+                                        <input
+                                          type="date"
+                                          value={row.date}
+                                          onChange={(e) => handleRowFieldChange(row.id, 'date', e.target.value)}
+                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
+                                        />
+                                      </td>
+                                      <td className="p-1.5 w-36">
+                                        <select
+                                          value={row.status || 'Por facturar'}
+                                          onChange={(e) => handleRowFieldChange(row.id, 'status', e.target.value)}
+                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm cursor-pointer font-medium"
+                                        >
+                                          <option value="Por facturar">Por facturar</option>
+                                          <option value="Factura emitida">Factura emitida</option>
+                                          <option value="Pagada">Pagada</option>
+                                        </select>
+                                      </td>
+                                      <td className="p-1.5 w-28">
+                                        <input
+                                          type="number"
+                                          value={row.uf}
+                                          onChange={(e) => handleRowFieldChange(row.id, 'uf', e.target.value)}
+                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-right"
+                                          step="0.01"
+                                        />
+                                      </td>
+                                      <td className="p-1.5">
+                                        <input
+                                          type="text"
+                                          value={row.comment || ''}
+                                          onChange={(e) => handleRowFieldChange(row.id, 'comment', e.target.value)}
+                                          placeholder="Agregar comentario..."
+                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
+                                        />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Verification Total Bar */}
+                            {(() => {
+                              const currentSum = budgetInstallments.reduce((acc, r) => acc + (parseFloat(r.uf) || 0), 0);
+                              const roundedSum = Math.round(currentSum * 100) / 100;
+                              const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
+                              const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
+                              return (
+                                <div className={`mt-3 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${
+                                  isMatch 
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}>
+                                  <div className="flex flex-wrap gap-x-md gap-y-1">
+                                    <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
+                                    <span className="text-slate-350">/</span>
+                                    <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
+                                  </div>
+                                  <div>
+                                    {isMatch ? (
+                                      <span className="flex items-center gap-1 text-emerald-600">
+                                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                        Montos coinciden
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center gap-1 text-amber-600">
+                                        <span className="material-symbols-outlined text-[18px]">warning</span>
+                                        Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Save Changes Button */}
+                            <div className="flex justify-end pt-sm">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveBillingTable(budget.id, budget.amount)}
+                                className="px-4 py-1.5 bg-secondary text-white text-body-sm font-bold rounded-lg hover:brightness-105 transition-all shadow-sm flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">save</span>
+                                <span>Guardar Facturación</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="p-md text-center text-on-surface-variant italic border border-dashed rounded-lg bg-slate-50/50">
-                          No hay costos extras registrados para este proyecto.
-                        </div>
-                      )}
-                    </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
             );
           })
         ) : (
-          <div className="glass-card rounded-xl p-xl text-center text-on-surface-variant italic border border-outline-variant/30 shadow-sm">
-            <span className="material-symbols-outlined text-[48px] text-slate-300 mb-2">folder_open</span>
-            <p className="font-semibold text-body-md mt-1">No se encontraron proyectos.</p>
-            <p className="text-label-md mt-1">Los proyectos se generan automáticamente cuando apruebas un presupuesto.</p>
+          <div className="p-xl text-center text-on-surface-variant italic border-2 border-dashed border-outline-variant/40 rounded-xl bg-white/40">
+            No se encontraron proyectos activos.
           </div>
         )}
       </div>
 
-      {/* Edit Project Modal */}
+      {/* Modal: Edit Project */}
       {editingProject && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl p-lg max-w-md w-full text-left border border-outline-variant/30 animate-scale-up space-y-md">
-            <div className="flex justify-between items-center border-b pb-sm">
-              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">Editar Proyecto</h3>
-              <button 
-                type="button"
-                onClick={() => setEditingProject(null)}
-                className="p-1 hover:bg-slate-100 rounded-full"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEdit} className="space-y-md text-left">
-              {/* Name */}
-              <div className="flex flex-col gap-xs">
-                <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Nombre del Proyecto</label>
-                <input
-                  type="text"
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-md z-50 animate-fade-in text-left">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-lg shadow-xl border border-outline-variant/30 flex flex-col max-h-[90vh]">
+            <h2 className="font-headline-md text-headline-md text-primary font-bold mb-md">Editar Parámetros del Proyecto</h2>
+            <form onSubmit={handleSaveEdit} className="space-y-md overflow-y-auto flex-1 pr-sm">
+              <div className="flex flex-col">
+                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Nombre / Código Proyecto</label>
+                <input 
+                  type="text" 
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all"
+                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
+                  placeholder="Ej: 0280-Mantenimiento Anual"
                   required
                 />
               </div>
-
-              {/* Client */}
-              <div className="flex flex-col gap-xs">
-                <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Cliente</label>
-                <select
+              <div className="flex flex-col">
+                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Superficie (m²)</label>
+                <input 
+                  type="number" 
+                  value={editSuperficie}
+                  onChange={(e) => setEditSuperficie(e.target.value)}
+                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
+                  placeholder="Superficie total"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Rentabilidad Esperada (%)</label>
+                <input 
+                  type="number" 
+                  value={editRentabilidad}
+                  onChange={(e) => setEditRentabilidad(e.target.value)}
+                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
+                  placeholder="Margen de ganancia"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Año</label>
+                <input 
+                  type="number" 
+                  value={editAnio}
+                  onChange={(e) => setEditAnio(e.target.value)}
+                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
+                  placeholder="Año contable"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Cliente</label>
+                <select 
                   value={editCliente}
                   onChange={(e) => setEditCliente(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
-                  required
+                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface font-medium cursor-pointer"
                 >
-                  <option value="">Seleccione Cliente...</option>
-                  {clients.map(c => {
-                    const val = c.name || c.company;
-                    const label = c.name ? `${c.name} (${c.company})` : c.company;
-                    return (
-                      <option key={c.id} value={val}>{label}</option>
-                    );
-                  })}
+                  <option value="">Seleccione un cliente</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.company}>{c.company}</option>
+                  ))}
                 </select>
               </div>
 
-              {/* Surface & Profitability */}
-              <div className="grid grid-cols-2 gap-md">
-                <div className="flex flex-col gap-xs">
-                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Superficie (m2)</label>
-                  <input
-                    type="number"
-                    value={editSuperficie}
-                    onChange={(e) => setEditSuperficie(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all"
-                    min="0"
-                    step="0.1"
-                    required
-                  />
-                </div>
-                <div className="flex flex-col gap-xs">
-                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Rentabilidad (%)</label>
-                  <input
-                    type="number"
-                    value={editRentabilidad}
-                    onChange={(e) => setEditRentabilidad(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all font-bold"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Year */}
-              <div className="flex flex-col gap-xs">
-                <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Año</label>
-                <input
-                  type="number"
-                  value={editAnio}
-                  onChange={(e) => setEditAnio(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all"
-                  required
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="flex justify-end gap-md pt-sm border-t">
-                <button
-                  type="button"
+              <div className="flex justify-end gap-sm pt-md border-t">
+                <button 
+                  type="button" 
                   onClick={() => setEditingProject(null)}
-                  className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold text-body-sm"
+                  className="px-lg py-sm text-primary font-bold hover:bg-slate-100 rounded-lg transition-all text-body-md"
                 >
-                  Descartar
+                  Cancelar
                 </button>
-                <button
-                  type="submit"
-                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-105 transition-all font-bold text-body-sm shadow-md shadow-secondary/15"
+                <button 
+                  type="submit" 
+                  className="px-lg py-sm bg-primary text-white font-bold rounded-lg hover:brightness-105 transition-all shadow-sm text-body-md"
                 >
                   Guardar Cambios
                 </button>
@@ -803,80 +672,71 @@ export default function Proyectos({ projects, setProjects, clients }) {
         </div>
       )}
 
-      {/* Modal: Agregar Costo Extra */}
+      {/* Modal: Costos Extras */}
       {extraCostProject && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl p-lg max-w-2xl w-full text-left border border-outline-variant/30 animate-scale-up space-y-md flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center border-b pb-sm flex-shrink-0">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-md z-50 animate-fade-in text-left">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-lg shadow-xl border border-outline-variant/30 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-start mb-md flex-shrink-0">
               <div>
-                <h3 className="font-headline-sm text-headline-sm text-primary font-bold">Costos Extras</h3>
-                <p className="text-body-xs text-on-surface-variant font-bold truncate max-w-md">
-                  Proyecto: {extraCostProject.projectName}
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Gestión de Costos Extras</h2>
+                <p className="text-on-surface-variant font-body-sm mt-1 truncate max-w-md">
+                  Proyecto: <strong>{extraCostProject.projectName}</strong>
                 </p>
               </div>
               <button 
-                type="button"
                 onClick={() => setExtraCostProject(null)}
-                className="p-1.5 hover:bg-slate-100 rounded-full transition-all"
+                className="p-1 hover:bg-slate-100 rounded-full transition-all text-secondary"
               >
-                <span className="material-symbols-outlined">close</span>
+                <span className="material-symbols-outlined text-[24px]">close</span>
               </button>
             </div>
 
-            <div className="flex-grow overflow-y-auto space-y-lg pr-1">
-              {/* Form to add a new Costo Extra */}
-              <form onSubmit={handleAddExtraCost} className="space-y-md bg-slate-50/50 p-md rounded-xl border border-slate-200 text-left">
-                <h4 className="font-title-sm text-title-sm text-secondary font-bold flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[20px]">add_circle</span>
-                  Registrar Nuevo Costo Extra
-                </h4>
-                
+            <div className="flex-1 overflow-y-auto space-y-lg pr-sm">
+              {/* Form to add Costo Extra */}
+              <form onSubmit={handleAddExtraCostLocal} className="p-md border rounded-xl bg-slate-50/50 space-y-md">
+                <h4 className="font-title-sm text-title-sm text-primary font-bold uppercase tracking-wider text-xs">Agregar Nuevo Costo Extra</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
-                  <div className="flex flex-col gap-xs">
-                    <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Costo Extra (UF)</label>
-                    <input
-                      type="number"
-                      value={extraCostUF}
-                      onChange={(e) => setExtraCostUF(e.target.value)}
-                      placeholder="Ej: 15.50"
-                      className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all"
-                      min="0.01"
+                  <div className="flex flex-col">
+                    <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Monto (UF)</label>
+                    <input 
+                      type="number" 
                       step="0.01"
                       required
+                      placeholder="Ej: 45.50"
+                      value={extraCostUF}
+                      onChange={(e) => setExtraCostUF(e.target.value)}
+                      className="p-sm bg-white border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-sm"
                     />
                   </div>
-                  <div className="flex flex-col gap-xs">
-                    <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Superficie (m²)</label>
-                    <input
-                      type="number"
+                  <div className="flex flex-col">
+                    <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Superficie asociada (m²)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      placeholder="Ej: 15.00 (Opcional)"
                       value={extraCostSuperficie}
                       onChange={(e) => setExtraCostSuperficie(e.target.value)}
-                      placeholder="Ej: 45.0"
-                      className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all"
-                      min="0"
-                      step="0.1"
+                      className="p-sm bg-white border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-sm"
                     />
                   </div>
                 </div>
-
-                <div className="flex flex-col gap-xs">
-                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Comentario / Justificación</label>
-                  <textarea
+                <div className="flex flex-col">
+                  <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Comentario / Justificación</label>
+                  <input 
+                    type="text" 
+                    placeholder="Ej: Modificaciones estructurales solicitadas por el cliente"
                     value={extraCostComment}
                     onChange={(e) => setExtraCostComment(e.target.value)}
-                    placeholder="Ej: Adición de superficie para ductos de ventilación..."
-                    className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all h-20 resize-none"
-                    required
+                    className="p-sm bg-white border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-sm"
                   />
                 </div>
-
-                <div className="flex justify-end pt-xs">
-                  <button
-                    type="submit"
-                    className="px-lg py-2 bg-secondary text-white rounded-lg hover:brightness-105 transition-all font-bold text-body-sm shadow-md shadow-secondary/15 flex items-center gap-1.5"
+                <div className="flex justify-end pt-sm">
+                  <button 
+                    type="submit" 
+                    className="px-lg py-1.5 bg-primary text-white text-body-sm font-bold rounded-lg hover:brightness-105 transition-all shadow-sm flex items-center gap-1"
                   >
-                    <span className="material-symbols-outlined text-[18px]">add</span>
-                    Agregar Costo Extra
+                    <span className="material-symbols-outlined text-[16px]">add</span>
+                    <span>Registrar Costo</span>
                   </button>
                 </div>
               </form>
@@ -888,69 +748,71 @@ export default function Proyectos({ projects, setProjects, clients }) {
                   Costos Extras Registrados
                 </h4>
 
-                {extraCostProject.extraCosts && extraCostProject.extraCosts.length > 0 ? (
-                  <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-xs max-h-[30vh]">
-                    <table className="w-full text-left border-collapse text-body-sm">
-                      <thead className="bg-slate-100 text-slate-700 text-label-xs font-bold uppercase sticky top-0">
-                        <tr>
-                          <th className="p-2.5 border-b border-slate-200">Comentario</th>
-                          <th className="p-2.5 border-b border-slate-200 text-right w-28">Superficie</th>
-                          <th className="p-2.5 border-b border-slate-200 text-right w-28">Monto (UF)</th>
-                          <th className="p-2.5 border-b border-slate-200 text-center w-16">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {extraCostProject.extraCosts.map((cost) => (
-                          <tr key={cost.id} className="hover:bg-slate-50/40">
-                            <td className="p-2.5 text-on-surface truncate max-w-[200px]" title={cost.comment}>
-                              {cost.comment}
-                            </td>
-                            <td className="p-2.5 text-right text-on-surface">
-                              {cost.superficie ? `${cost.superficie.toLocaleString('es-CL')} m²` : '0 m²'}
-                            </td>
-                            <td className="p-2.5 text-right font-bold text-secondary">
-                              {cost.amount.toLocaleString('es-CL', { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="p-2.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteExtraCost(cost.id)}
-                                className="p-1 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center mx-auto"
-                                title="Eliminar este costo"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">delete</span>
-                              </button>
-                            </td>
+                {(() => {
+                  const projectModalExtraCosts = extraCosts.filter(ec => ec.project_id === extraCostProject.id);
+                  return projectModalExtraCosts.length > 0 ? (
+                    <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-xs max-h-[30vh]">
+                      <table className="w-full text-left border-collapse text-body-sm">
+                        <thead className="bg-slate-100 text-slate-700 text-label-xs font-bold uppercase sticky top-0">
+                          <tr>
+                            <th className="p-2.5 border-b border-slate-200">Comentario</th>
+                            <th className="p-2.5 border-b border-slate-200 text-right w-28">Superficie</th>
+                            <th className="p-2.5 border-b border-slate-200 text-right w-28">Monto (UF)</th>
+                            <th className="p-2.5 border-b border-slate-200 text-center w-16">Acción</th>
                           </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="sticky bottom-0 bg-slate-50 border-t font-bold">
-                        <tr>
-                          <td className="p-2.5 text-on-surface text-label-xs font-bold uppercase">Total</td>
-                          <td className="p-2.5 text-right text-on-surface">
-                            {extraCostProject.extraCosts.reduce((sum, c) => sum + (c.superficie || 0), 0).toLocaleString('es-CL')} m²
-                          </td>
-                          <td className="p-2.5 text-right text-secondary">
-                            {extraCostProject.extraCosts.reduce((sum, c) => sum + (c.amount || 0), 0).toLocaleString('es-CL', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="p-md text-center text-on-surface-variant italic border border-dashed rounded-lg bg-slate-50/20">
-                    No hay costos extras registrados para este proyecto.
-                  </div>
-                )}
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {projectModalExtraCosts.map((cost) => (
+                            <tr key={cost.id} className="hover:bg-slate-50/40">
+                              <td className="p-2.5 text-on-surface truncate max-w-[200px]" title={cost.comment}>
+                                {cost.comment}
+                              </td>
+                              <td className="p-2.5 text-right text-on-surface">
+                                {cost.superficie ? `${cost.superficie.toLocaleString('es-CL')} m²` : '0 m²'}
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-secondary">
+                                {cost.amount.toLocaleString('es-CL', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteExtraCostLocal(cost.id)}
+                                  className="p-1 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center mx-auto"
+                                  title="Eliminar este costo"
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="sticky bottom-0 bg-slate-50 border-t font-bold">
+                          <tr>
+                            <td className="p-2.5 text-on-surface text-label-xs font-bold uppercase">Total</td>
+                            <td className="p-2.5 text-right text-on-surface">
+                              {projectModalExtraCosts.reduce((sum, c) => sum + (c.superficie || 0), 0).toLocaleString('es-CL')} m²
+                            </td>
+                            <td className="p-2.5 text-right text-secondary">
+                              {projectModalExtraCosts.reduce((sum, c) => sum + (c.amount || 0), 0).toLocaleString('es-CL', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-md text-center text-on-surface-variant italic border border-dashed rounded-lg bg-slate-50/20">
+                      No hay costos extras registrados para este proyecto.
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
             <div className="flex justify-end pt-sm border-t flex-shrink-0">
-              <button
-                type="button"
+              <button 
                 onClick={() => setExtraCostProject(null)}
-                className="px-lg py-2 border border-outline-variant rounded-lg text-on-surface hover:bg-slate-50 transition-all font-bold text-body-sm"
+                className="px-lg py-sm bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg transition-all text-body-md shadow-xs"
               >
                 Cerrar
               </button>
@@ -959,52 +821,65 @@ export default function Proyectos({ projects, setProjects, clients }) {
         </div>
       )}
 
-      {/* Document Preview Modal Overlay */}
+      {/* Modal: Document Preview */}
       {previewFile && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-lg bg-primary/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-4xl h-[85vh] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-scale-up text-left border border-outline-variant/30">
-            {/* Header */}
-            <div className="p-md border-b border-outline-variant bg-surface flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-secondary">
-                  {previewFile.name.toLowerCase().endsWith('.pdf') ? 'picture_as_pdf' : 'description'}
-                </span>
-                <span className="font-bold text-body-md text-primary truncate max-w-md">{previewFile.name}</span>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-md z-55 animate-fade-in text-left">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-lg shadow-xl border border-outline-variant/30 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center mb-md flex-shrink-0">
+              <div>
+                <h3 className="font-headline-sm text-headline-sm text-primary font-bold truncate max-w-xl" title={previewFile.name}>
+                  Vista Previa: {previewFile.name}
+                </h3>
               </div>
-              <button
-                onClick={() => {
-                  setPreviewFile(null);
-                  setDocxHtml('');
-                }}
-                className="p-1.5 hover:bg-slate-100 rounded-full transition-all"
+              <button 
+                onClick={() => setPreviewFile(null)}
+                className="p-1 hover:bg-slate-100 rounded-full transition-all text-secondary"
               >
-                <span className="material-symbols-outlined text-[20px]">close</span>
+                <span className="material-symbols-outlined text-[24px]">close</span>
               </button>
             </div>
-            {/* Content Preview Frame */}
-            <div className="flex-grow overflow-auto p-lg bg-slate-100/50 flex justify-center items-stretch">
-              {previewFile.name.toLowerCase().endsWith('.pdf') ? (
-                <iframe
-                  src={previewFile.url}
-                  className="w-full h-full rounded border border-outline-variant/40 bg-white"
-                  title="Vista previa PDF"
-                />
-              ) : previewFile.name.toLowerCase().endsWith('.docx') ? (
+
+            <div className="flex-1 overflow-y-auto border border-outline-variant/20 rounded-xl bg-slate-50/30 p-md min-h-[40vh]">
+              {previewFile.name.toLowerCase().endsWith('.docx') ? (
                 docxHtml ? (
-                  <div className="w-full bg-white p-lg rounded shadow border border-outline-variant/30 overflow-y-auto">
-                    <div className="prose prose-slate max-w-none text-body-md" dangerouslySetInnerHTML={{ __html: docxHtml }} />
-                  </div>
+                  <div 
+                    className="prose prose-slate max-w-none text-body-md text-on-surface bg-white p-lg rounded-lg border shadow-xs"
+                    dangerouslySetInnerHTML={{ __html: docxHtml }} 
+                  />
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-on-surface-variant w-full h-full">
-                    <span className="material-symbols-outlined text-[48px] animate-spin text-secondary">sync</span>
-                    <span className="text-body-md font-medium mt-4">Procesando y generando vista previa de Word...</span>
+                  <div className="flex flex-col items-center justify-center py-20 gap-md">
+                    <div className="w-8 h-8 border-4 border-secondary border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-body-sm text-on-surface-variant font-bold">Convirtiendo documento a HTML...</span>
                   </div>
                 )
               ) : (
-                <div className="text-center py-20 text-on-surface-variant italic">
-                  Vista previa no soportada para este formato de archivo.
+                <div className="text-center py-20">
+                  <span className="material-symbols-outlined text-[64px] text-amber-500">warning</span>
+                  <h4 className="font-bold text-title-md mt-4 text-on-surface">Formato de archivo no soportado para vista previa</h4>
+                  <p className="text-body-md text-on-surface-variant mt-2">
+                    Solo los archivos Word (.docx) se pueden previsualizar directamente en el ERP.
+                  </p>
+                  {previewFile.url && (
+                    <a 
+                      href={previewFile.url} 
+                      download={previewFile.name}
+                      className="inline-flex items-center gap-1.5 mt-md px-lg py-sm bg-primary text-white font-bold rounded-lg hover:brightness-105 transition-all shadow-sm text-body-md"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">download</span>
+                      <span>Descargar Archivo</span>
+                    </a>
+                  )}
                 </div>
               )}
+            </div>
+
+            <div className="flex justify-end pt-sm border-t mt-md flex-shrink-0">
+              <button 
+                onClick={() => setPreviewFile(null)}
+                className="px-lg py-sm bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg transition-all text-body-md shadow-xs"
+              >
+                Cerrar Vista Previa
+              </button>
             </div>
           </div>
         </div>

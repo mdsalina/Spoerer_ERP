@@ -34,7 +34,7 @@ const isQuoteInPeriod = (quote, period) => {
   return quoteDate >= cutoffDate;
 };
 
-export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onAddProject }) {
+export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onApproveBudgetAndCreateProject }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -401,35 +401,21 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
     const totalCuotasCalculated = expandedTable.length;
 
-    // Save project
-    const newProjectData = {
-      id: projectName,
-      projectName: projectName,
+    // Parse project number and name from semantic string
+    const nameParts = projectName.split('-');
+    const projectNumber = nameParts[0]?.trim() || '';
+    const rawProjectName = nameParts.slice(1).join('-').split(' - ')[0]?.trim() || projectName;
+
+    const projectForm = {
+      projectNumber: projectNumber,
+      rawProjectName: rawProjectName,
+      clientId: approvingQuote.clientId,
       superficie: parseFloat(superficie) || 0,
       rentabilidad: parseFloat(rentabilidad) || 0,
-      anio: parseInt(anio) || new Date().getFullYear(),
-      cliente: cliente,
-      extraCosts: [],
-      budgets: [
-        {
-          quoteId: approvingQuote.id,
-          amount: parseFloat(valorProyecto) || 0,
-          description: descripcion,
-          numCuotas: totalCuotasCalculated,
-          billingTable: expandedTable,
-          backupFiles: approvingQuoteBackupFiles
-        }
-      ]
+      anio: parseInt(anio) || new Date().getFullYear()
     };
 
-    onAddProject(newProjectData);
-
-    // Update budget status to Approved and save files
-    onAddQuote({
-      ...approvingQuote,
-      status: 'Aprobado',
-      backupFiles: approvingQuoteBackupFiles
-    });
+    onApproveBudgetAndCreateProject(projectForm, approvingQuote.id, expandedTable);
 
     // Reset approval modal states
     setIsApproveModalOpen(false);
@@ -884,33 +870,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       backupFiles: backupFiles
     };
 
-    onAddQuote(newQuote);
-
-    // If approved, update the project's budget information
-    if (finalStatus === 'Aprobado' || finalStatus === 'Aprovado') {
-      const associatedProject = projects?.find(p => p.budgets?.some(b => b.quoteId === formattedId));
-      if (associatedProject) {
-        const updatedBudgets = associatedProject.budgets.map(b => {
-          if (b.quoteId === formattedId) {
-            return {
-              ...b,
-              amount: total,
-              description: quoteTitle,
-              numCuotas: editBillingTable.length,
-              billingTable: editBillingTable,
-              backupFiles: backupFiles
-            };
-          }
-          return b;
-        });
-
-        const updatedProject = {
-          ...associatedProject,
-          budgets: updatedBudgets
-        };
-        onAddProject(updatedProject);
-      }
-    }
+    onAddQuote(newQuote, quoteItems);
 
     // Reset form
     setSelectedClient('');

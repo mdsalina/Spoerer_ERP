@@ -5,12 +5,16 @@ export default function Sidebar({ children, currentTab, setCurrentTab, user, onL
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  const isAdmin = user?.role?.toLowerCase() === 'admin' || 
+                  user?.role?.toLowerCase() === 'administrador' || 
+                  user?.role?.toLowerCase() === 'system administrator';
+
   const navItems = [
     { id: 'crm', label: 'Clientes', icon: 'groups' },
     { id: 'presupuestos', label: 'Presupuestos', icon: 'request_quote' },
     { id: 'facturacion', label: 'Facturación', icon: 'receipt_long' },
     { id: 'proyectos', label: 'Proyectos', icon: 'folder' },
-    { id: 'usuarios', label: 'Control de Accesos', icon: 'manage_accounts' },
+    ...(isAdmin ? [{ id: 'usuarios', label: 'Control de Accesos', icon: 'manage_accounts' }] : []),
   ];
 
   return (
@@ -131,16 +135,18 @@ export default function Sidebar({ children, currentTab, setCurrentTab, user, onL
                     <p className="font-label-md text-label-md text-primary font-bold">{user?.name}</p>
                     <p className="text-xs text-on-surface-variant">{user?.role}</p>
                   </div>
-                  <button
-                    onClick={() => {
-                      setCurrentTab('usuarios');
-                      setShowUserMenu(false);
-                    }}
-                    className="w-full px-md py-sm hover:bg-surface-container-low text-body-md text-on-surface flex items-center gap-sm"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
-                    Mi Perfil / Accesos
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => {
+                        setCurrentTab('usuarios');
+                        setShowUserMenu(false);
+                      }}
+                      className="w-full px-md py-sm hover:bg-surface-container-low text-body-md text-on-surface flex items-center gap-sm"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">manage_accounts</span>
+                      Mi Perfil / Accesos
+                    </button>
+                  )}
                   <button
                     onClick={onLogout}
                     className="w-full px-md py-sm hover:bg-error-container hover:text-error text-body-md text-on-surface flex items-center gap-sm border-t border-outline-variant/30"

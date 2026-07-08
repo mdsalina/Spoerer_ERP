@@ -18,8 +18,11 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
   const [name, setName] = useState(''); // Contacto
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  
   const [rutError, setRutError] = useState('');
+
+  // Custom modal / alert states
+  const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
+  const [clientToDelete, setClientToDelete] = useState(null);
 
   // Filter clients by search term (including RUT, Contact name, Company, and Email)
   const filteredClients = clients.filter(client => {
@@ -108,21 +111,28 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!rut || !company || !email) {
-      alert('Por favor complete los campos obligatorios: RUT, Nombre o Razón Social y Correo Electrónico.');
+      setNotification({
+        type: 'error',
+        title: 'Campos Obligatorios',
+        message: 'Por favor complete los campos obligatorios: RUT, Nombre o Razón Social y Correo Electrónico.'
+      });
       return;
     }
 
     if (!validateRut(rut)) {
       setRutError('RUT inválido');
-      alert('El RUT ingresado no es válido.');
+      setNotification({
+        type: 'error',
+        title: 'RUT Inválido',
+        message: 'El RUT ingresado no es válido.'
+      });
       return;
     }
     
-    // Add/Update client
-    onAddClient({
+    const clientData = {
       id: editingClientId || Date.now().toString(),
       rut,
       company,
@@ -134,9 +144,27 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
       email,
       phone: phone || 'N/A',
       initials: company.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
-    });
+    };
 
-    handleCloseModal();
+    try {
+      await onAddClient(clientData);
+      handleCloseModal();
+      setNotification({
+        type: 'success',
+        title: editingClientId ? 'Cliente Actualizado' : 'Cliente Creado',
+        message: editingClientId 
+          ? 'Los datos del cliente han sido actualizados correctamente.' 
+          : 'El cliente ha sido registrado exitosamente en el sistema.'
+      });
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        title: editingClientId ? 'Error al Actualizar' : 'Error al Registrar',
+        message: err.message || (editingClientId 
+          ? 'Ocurrió un error al actualizar los datos del cliente.' 
+          : 'Ocurrió un error al registrar el cliente.')
+      });
+    }
   };
 
   return (
@@ -240,11 +268,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                           <span className="material-symbols-outlined text-lg">edit</span>
                         </button>
                         <button 
-                          onClick={() => {
-                            if (window.confirm(`¿Está seguro de que desea eliminar al cliente "${client.company}"? Esta acción no se puede deshacer.`)) {
-                              onDeleteClient(client.id);
-                            }
-                          }}
+                          onClick={() => setClientToDelete(client)}
                           className="text-on-surface-variant hover:text-error transition-colors" 
                           title="Eliminar"
                         >
@@ -563,6 +587,85 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                   Cerrar Ficha
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reusable Notification Modal (Success / Error) */}
+      {notification && (
+        <div className="fixed inset-0 z-[100] bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-sm mb-2 ${
+              notification.type === 'error' ? 'bg-error-container/20 text-error' : 'bg-secondary-container/20 text-secondary'
+            }`}>
+              <span className="material-symbols-outlined text-[36px]">
+                {notification.type === 'error' ? 'error' : 'check_circle'}
+              </span>
+            </div>
+            
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">{notification.title}</h3>
+              <p className="text-body-md text-on-surface-variant">{notification.message}</p>
+            </div>
+
+            <div className="pt-sm">
+              <button 
+                onClick={() => setNotification(null)}
+                className="w-full bg-primary text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal for Deletion */}
+      {clientToDelete && (
+        <div className="fixed inset-0 z-50 bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className="w-16 h-16 bg-error-container/20 rounded-full flex items-center justify-center text-error mx-auto shadow-sm mb-2">
+              <span className="material-symbols-outlined text-[36px]">warning</span>
+            </div>
+            
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">¿Eliminar Cliente?</h3>
+              <p className="text-body-md text-on-surface-variant">
+                ¿Está seguro de que desea eliminar por completo a <strong>{clientToDelete.company}</strong>? Esta acción no se puede deshacer y desvinculará sus datos.
+              </p>
+            </div>
+
+            <div className="pt-sm flex gap-md">
+              <button 
+                onClick={() => setClientToDelete(null)}
+                className="flex-1 bg-white border border-outline-variant text-on-surface py-sm rounded-lg font-bold hover:bg-surface-container transition-all active:scale-95 text-body-md"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const id = clientToDelete.id;
+                  setClientToDelete(null);
+                  try {
+                    await onDeleteClient(id);
+                    setNotification({
+                      type: 'success',
+                      title: 'Cliente Eliminado',
+                      message: 'El cliente ha sido removido exitosamente del sistema.'
+                    });
+                  } catch (err) {
+                    setNotification({
+                      type: 'error',
+                      title: 'Error al Eliminar',
+                      message: err.message || 'Ocurrió un error al eliminar el cliente.'
+                    });
+                  }
+                }}
+                className="flex-1 bg-error text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Sí, Eliminar
+              </button>
             </div>
           </div>
         </div>
