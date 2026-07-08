@@ -160,7 +160,46 @@ export default function Proyectos({
       return;
     }
 
-    onSaveInstallments(budgetInsts);
+    onSaveInstallments(budgetId, budgetInsts);
+  };
+
+  const handleDeleteRowLocal = (installmentId, budgetId) => {
+    setLocalInstallments(prev => {
+      const filtered = prev.filter(inst => inst.id !== installmentId);
+      // Auto-recalculate numQuota sequentially
+      let count = 1;
+      return filtered.map(inst => {
+        if (inst.origin_budget_id === budgetId) {
+          const updated = {
+            ...inst,
+            numQuota: String(count).padStart(2, '0')
+          };
+          count++;
+          return updated;
+        }
+        return inst;
+      });
+    });
+  };
+
+  const handleAddRowLocal = (projectId, budgetId) => {
+    const budgetInsts = localInstallments.filter(i => i.origin_budget_id === budgetId);
+    const nextNum = budgetInsts.length + 1;
+    const numStr = String(nextNum).padStart(2, '0');
+
+    const newInst = {
+      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      project_id: projectId,
+      origin_budget_id: budgetId,
+      numQuota: numStr,
+      date: new Date().toISOString().split('T')[0],
+      uf: 0,
+      status: 'Por facturar',
+      comment: '',
+      isNew: true
+    };
+
+    setLocalInstallments(prev => [...prev, newInst]);
   };
 
   const handleRowFieldChange = (installmentId, field, value) => {
@@ -405,10 +444,9 @@ export default function Proyectos({
                             <div key={cost.id} className="p-md bg-white border border-slate-200 rounded-lg flex justify-between items-start gap-md shadow-xs">
                               <div>
                                 <p className="text-body-sm font-semibold text-slate-800">{cost.comment || 'Sin descripción'}</p>
-                                <div className="flex gap-2 text-label-xs text-on-surface-variant/80 mt-1">
-                                  <span>{cost.superficie} m²</span>
-                                  <span>•</span>
-                                  <span className="font-bold text-amber-600">{cost.amount} UF</span>
+                                <div className="mt-1.5 flex flex-col">
+                                  <span className="font-bold text-amber-600 text-body-md">{cost.amount.toLocaleString('es-CL', { minimumFractionDigits: 1 })} UF</span>
+                                  <span className="text-[11px] text-on-surface-variant/70 mt-0.5">Superficie: {(cost.superficie || 0).toLocaleString('es-CL')} m²</span>
                                 </div>
                               </div>
                               <button
@@ -479,6 +517,7 @@ export default function Proyectos({
                                     <th className="p-2.5 border-b border-slate-200 w-36">Estado</th>
                                     <th className="p-2.5 border-b border-slate-200 text-right w-28">UF</th>
                                     <th className="p-2.5 border-b border-slate-200">Comentario / Estado de Hito</th>
+                                    <th className="p-2.5 border-b border-slate-200 text-center w-16">Acción</th>
                                   </tr>
                                 </thead>
                                 <tbody className="text-body-sm divide-y divide-slate-100">
@@ -524,6 +563,16 @@ export default function Proyectos({
                                           className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
                                         />
                                       </td>
+                                      <td className="p-1.5 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteRowLocal(row.id, budget.id)}
+                                          className="p-1 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center mx-auto"
+                                          title="Eliminar cuota"
+                                        >
+                                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                                        </button>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -564,8 +613,16 @@ export default function Proyectos({
                               );
                             })()}
 
-                            {/* Save Changes Button */}
-                            <div className="flex justify-end pt-sm">
+                            {/* Save Changes & Add Row Buttons */}
+                            <div className="flex justify-between items-center pt-sm">
+                              <button
+                                type="button"
+                                onClick={() => handleAddRowLocal(project.id, budget.id)}
+                                className="px-4 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 text-body-sm font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">add</span>
+                                <span>Agregar Cuota</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleSaveBillingTable(budget.id, budget.amount)}

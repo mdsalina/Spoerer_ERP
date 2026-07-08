@@ -38,6 +38,7 @@ const mapClientToDb = (client) => ({
 // Helper: Map budget fields between database and frontend
 const mapBudgetFromDb = (dbBudget) => ({
   id: dbBudget.id,
+  quoteId: dbBudget.budget_number,
   clientId: dbBudget.client_id,
   projectId: dbBudget.project_id,
   clientName: dbBudget.clients ? dbBudget.clients.contact_name : '',
@@ -53,7 +54,7 @@ const mapBudgetFromDb = (dbBudget) => ({
     qty: parseFloat(item.quantity) || 0,
     price: parseFloat(item.unit_price) || 0
   })) : [],
-  backupFiles: []
+  backupFiles: dbBudget.backup_files || []
 });
 
 // Helper: Map project fields between database and frontend
@@ -70,6 +71,18 @@ const mapProjectFromDb = (dbProject) => ({
   status: dbProject.status
 });
 
+const mapInstallmentStatusToDb = (status) => {
+  if (status === 'Factura emitida') return 'Facturado';
+  if (status === 'Pagada') return 'Pagado';
+  return status;
+};
+
+const mapInstallmentStatusFromDb = (status) => {
+  if (status === 'Facturado') return 'Factura emitida';
+  if (status === 'Pagado') return 'Pagada';
+  return status;
+};
+
 // Helper: Map installment fields
 const mapInstallmentFromDb = (dbInst) => ({
   id: dbInst.id,
@@ -81,7 +94,7 @@ const mapInstallmentFromDb = (dbInst) => ({
   net_clp: dbInst.net_amount_clp ? parseFloat(dbInst.net_amount_clp) : null,
   tax_clp: dbInst.tax_amount_clp ? parseFloat(dbInst.tax_amount_clp) : null,
   total_clp: dbInst.total_amount_clp ? parseFloat(dbInst.total_amount_clp) : null,
-  status: dbInst.status,
+  status: mapInstallmentStatusFromDb(dbInst.status),
   actualInvoiceDate: dbInst.actual_invoice_date || null,
   invoiceNumber: dbInst.invoice_number || '',
   invoiceFileUrl: dbInst.invoice_file_url || '',
@@ -98,6 +111,89 @@ const mapExtraCostFromDb = (dbCost) => ({
   superficie: parseFloat(dbCost.superficie) || 0,
   comment: dbCost.comment || ''
 });
+
+// Helper: Map status to storage folder name
+const getStatusFolder = (status) => {
+  const s = (status || 'Borrador').toLowerCase().trim();
+  if (s === 'borrador' || s === 'en revisión' || s === 'en revision') return 'borradores';
+  if (s === 'enviado') return 'enviados';
+  if (s === 'aprobado' || s === 'aprovado') return 'aprobados';
+  if (s === 'rechazado') return 'rechazados';
+  return 'borradores';
+};
+
+// Helper: Upload files to Supabase Storage
+const uploadQuoteFiles = async (budgetNumber, status, files) => {
+  if (!files || files.length === 0) return [];
+  
+  const folder = getStatusFolder(status);
+  const uploadedFiles = [];
+  
+  for (const file of files) {
+    if (file.fileObject) {
+      const path = `presupuestos/${folder}/${budgetNumber}/${file.name}`;
+      const { data, error } = await supabase.storage.from('budgets').upload(path, file.fileObject, {
+        upsert: true
+      });
+      if (error) throw error;
+      
+      const { data: { publicUrl } } = supabase.storage.from('budgets').getPublicUrl(path);
+      
+      uploadedFiles.push({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: publicUrl,
+        path: path
+      });
+    } else {
+      uploadedFiles.push({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        url: file.url,
+        path: file.path
+      });
+    }
+  }
+  return uploadedFiles;
+};
+
+// Helper: Move files in Supabase Storage when status changes
+const moveQuoteFiles = async (budgetNumber, oldStatus, newStatus, existingFiles) => {
+  const oldFolder = getStatusFolder(oldStatus);
+  const newFolder = getStatusFolder(newStatus);
+  
+  if (oldFolder === newFolder || !existingFiles || existingFiles.length === 0) {
+    return existingFiles || [];
+  }
+  
+  const movedFiles = [];
+  
+  for (const file of existingFiles) {
+    if (file.path) {
+      const oldPath = file.path;
+      const newPath = `presupuestos/${newFolder}/${budgetNumber}/${file.name}`;
+      
+      const { error } = await supabase.storage.from('budgets').move(oldPath, newPath);
+      if (error) {
+        console.error(`Error moving file from ${oldPath} to ${newPath}:`, error);
+        movedFiles.push(file);
+      } else {
+        const { data: { publicUrl } } = supabase.storage.from('budgets').getPublicUrl(newPath);
+        movedFiles.push({
+          ...file,
+          url: publicUrl,
+          path: newPath
+        });
+      }
+    } else {
+      movedFiles.push(file);
+    }
+  }
+  
+  return movedFiles;
+};
 
 // Main Database Service
 export const supabaseService = {
@@ -158,12 +254,10 @@ export const supabaseService = {
     return data.map(mapBudgetFromDb);
   },
 
-  async saveQuote(quote, items) {
-    // 1. Calculate amount dynamically if in draft/revision
-    let totalAmount = null;
-    if (quote.status === 'Aprobado') {
-      totalAmount = items.reduce((sum, item) => sum + ((parseFloat(item.qty) || 1) * (parseFloat(item.price) || 0)), 0);
-    }
+  async saveQuote(quote, items, billingInstallments) {
+    // 1. Calculate amount dynamically (Net total before taxes)
+    const netAmount = items.reduce((sum, item) => sum + ((parseFloat(item.qty) || 1) * (parseFloat(item.price) || 0)), 0);
+    const totalAmount = Math.round(netAmount * 100) / 100;
 
     const validityDays = quote.validity 
       ? parseInt(quote.validity.replace(/[^0-9]/g, '')) || 30 
@@ -173,21 +267,49 @@ export const supabaseService = {
       ? quote.date.split('/').reverse().join('-') // DD/MM/YYYY -> YYYY-MM-DD
       : new Date().toISOString().split('T')[0];
 
-    const budgetData = {
-      client_id: quote.clientId,
-      project_id: quote.projectId || null,
-      title: quote.title,
-      date: formattedDate,
-      total_amount: totalAmount,
-      validity_days: validityDays,
-      status: quote.status || 'Borrador',
-      created_by: quote.createdBy || null
-    };
-
+    const budgetNumber = quote.quoteId;
+    let finalFiles = quote.backupFiles || [];
     let savedBudget;
 
     if (quote.id && isUuid(quote.id)) {
       // Update Budget
+      // 1. Retrieve the existing budget to see if status changed or files deleted
+      const { data: oldBudget } = await supabase
+        .from('budgets')
+        .select('status, backup_files, project_id')
+        .eq('id', quote.id)
+        .single();
+
+      if (oldBudget) {
+        // Move files if status changed
+        if (oldBudget.status !== quote.status) {
+          const existingUploadedFiles = oldBudget.backup_files || [];
+          finalFiles = await moveQuoteFiles(budgetNumber, oldBudget.status, quote.status, existingUploadedFiles);
+        }
+        // Remove deleted files from storage
+        const oldFiles = oldBudget.backup_files || [];
+        const newFileNames = new Set((quote.backupFiles || []).map(f => f.name));
+        for (const oldFile of oldFiles) {
+          if (!newFileNames.has(oldFile.name) && oldFile.path) {
+            await supabase.storage.from('budgets').remove([oldFile.path]);
+          }
+        }
+      }
+
+      // 2. Upload any newly added files
+      finalFiles = await uploadQuoteFiles(budgetNumber, quote.status, finalFiles);
+
+      const budgetData = {
+        client_id: quote.clientId,
+        project_id: quote.projectId || (oldBudget ? oldBudget.project_id : null),
+        title: quote.title,
+        date: formattedDate,
+        total_amount: totalAmount,
+        validity_days: validityDays,
+        status: quote.status || 'Borrador',
+        backup_files: finalFiles
+      };
+
       const { data, error } = await supabase
         .from('budgets')
         .update(budgetData)
@@ -197,13 +319,27 @@ export const supabaseService = {
       savedBudget = data[0];
     } else {
       // Insert Budget
-      // Get first profile/user to link if created_by is null
+      // 1. Upload files directly to the target status folder
+      finalFiles = await uploadQuoteFiles(budgetNumber, quote.status, finalFiles);
+
+      const budgetData = {
+        client_id: quote.clientId,
+        project_id: quote.projectId || null,
+        title: quote.title,
+        date: formattedDate,
+        total_amount: totalAmount,
+        validity_days: validityDays,
+        status: quote.status || 'Borrador',
+        created_by: quote.createdBy || null,
+        budget_number: budgetNumber,
+        backup_files: finalFiles
+      };
+
       if (!budgetData.created_by) {
         const { data: profiles } = await supabase.from('profiles').select('id').limit(1);
         if (profiles && profiles.length > 0) {
           budgetData.created_by = profiles[0].id;
         } else {
-          // Fallback to active session user
           const { data: { session } } = await supabase.auth.getSession();
           if (session) {
             budgetData.created_by = session.user.id;
@@ -220,10 +356,8 @@ export const supabaseService = {
     }
 
     // 2. Sync Items (Budget Items)
-    // Delete existing items for this budget first
     await supabase.from('budget_items').delete().eq('budget_id', savedBudget.id);
 
-    // Insert new items
     if (items && items.length > 0) {
       const itemsToInsert = items.map(item => ({
         budget_id: savedBudget.id,
@@ -235,6 +369,52 @@ export const supabaseService = {
       if (itemsError) throw itemsError;
     }
 
+    // 2.5 Sync Billing Installments (Cuotas) if provided
+    if (billingInstallments && savedBudget.id) {
+      const projectId = savedBudget.project_id;
+      
+      if (projectId) {
+        // Delete existing installments linked to this budget
+        const { error: delError } = await supabase
+          .from('billing_installments')
+          .delete()
+          .eq('origin_budget_id', savedBudget.id);
+        
+        if (delError) throw delError;
+
+        // Insert new/updated installments if they are provided
+        if (billingInstallments.length > 0) {
+          const installmentsToInsert = billingInstallments.map(inst => ({
+            project_id: projectId,
+            origin_budget_id: savedBudget.id,
+            installment_number: inst.numQuota,
+            scheduled_date: inst.date,
+            planned_amount_uf: parseFloat(inst.uf) || 0,
+            comment: inst.comment || '',
+            status: mapInstallmentStatusToDb(inst.status || 'Por facturar')
+          }));
+
+          const { error: insError } = await supabase
+            .from('billing_installments')
+            .insert(installmentsToInsert);
+          
+          if (insError) throw insError;
+        }
+      }
+    }
+
+    // Retrieve fresh installments to sync in state
+    let freshInstallments = null;
+    if (billingInstallments && savedBudget.id) {
+      const { data: dbInsts } = await supabase
+        .from('billing_installments')
+        .select('*')
+        .eq('origin_budget_id', savedBudget.id);
+      if (dbInsts) {
+        freshInstallments = dbInsts.map(mapInstallmentFromDb);
+      }
+    }
+
     // Retrieve fully hydrated budget
     const { data: finalBudget, error: finalError } = await supabase
       .from('budgets')
@@ -243,10 +423,36 @@ export const supabaseService = {
       .single();
 
     if (finalError) throw finalError;
-    return mapBudgetFromDb(finalBudget);
+
+    return {
+      budget: mapBudgetFromDb(finalBudget),
+      installments: freshInstallments
+    };
   },
 
   async deleteQuote(id) {
+    // 1. Get backup files to delete them from storage
+    const { data: budget } = await supabase
+      .from('budgets')
+      .select('backup_files')
+      .eq('id', id)
+      .single();
+
+    if (budget && budget.backup_files && budget.backup_files.length > 0) {
+      const pathsToDelete = budget.backup_files.map(f => f.path).filter(Boolean);
+      if (pathsToDelete.length > 0) {
+        await supabase.storage.from('budgets').remove(pathsToDelete);
+      }
+    }
+
+    // 1.5. Delete referenced billing installments first
+    const { error: instError } = await supabase
+      .from('billing_installments')
+      .delete()
+      .eq('origin_budget_id', id);
+    if (instError) throw instError;
+
+    // 2. Delete budget from database
     const { error } = await supabase
       .from('budgets')
       .delete()
@@ -367,8 +573,9 @@ export const supabaseService = {
 
   async updateInstallment(id, updates) {
     const dbUpdates = {};
+    if (updates.numQuota !== undefined) dbUpdates.installment_number = updates.numQuota;
     if (updates.date !== undefined) dbUpdates.scheduled_date = updates.date;
-    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.status !== undefined) dbUpdates.status = mapInstallmentStatusToDb(updates.status);
     if (updates.uf !== undefined) dbUpdates.planned_amount_uf = parseFloat(updates.uf) || 0;
     if (updates.comment !== undefined) dbUpdates.comment = updates.comment;
     
@@ -394,6 +601,36 @@ export const supabaseService = {
     return mapInstallmentFromDb(data[0]);
   },
 
+  async createInstallment(installment) {
+    const dbData = {
+      project_id: installment.project_id,
+      origin_budget_id: installment.origin_budget_id,
+      installment_number: installment.numQuota,
+      scheduled_date: installment.date,
+      planned_amount_uf: parseFloat(installment.uf) || 0,
+      status: mapInstallmentStatusToDb(installment.status || 'Por facturar'),
+      comment: installment.comment || ''
+    };
+
+    const { data, error } = await supabase
+      .from('billing_installments')
+      .insert([dbData])
+      .select();
+
+    if (error) throw error;
+    return mapInstallmentFromDb(data[0]);
+  },
+
+  async deleteInstallment(id) {
+    const { error } = await supabase
+      .from('billing_installments')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return id;
+  },
+
   // Vínculo Presupuesto + Proyecto + Cuotas (Transacción Atómica de Aprobación)
   async approveBudgetAndCreateProject(projectForm, budgetId, billingInstallments) {
     // 1. Create Project
@@ -407,11 +644,25 @@ export const supabaseService = {
       status: 'Activo'
     };
 
-    const { data: dbProj, error: projError } = await supabase
-      .from('projects')
-      .insert([projectData])
-      .select('*, clients(*)')
-      .single();
+    let dbProj, projError;
+    if (projectForm.id) {
+      const { data, error } = await supabase
+        .from('projects')
+        .update(projectData)
+        .eq('id', projectForm.id)
+        .select('*, clients(*)')
+        .single();
+      dbProj = data;
+      projError = error;
+    } else {
+      const { data, error } = await supabase
+        .from('projects')
+        .insert([projectData])
+        .select('*, clients(*)')
+        .single();
+      dbProj = data;
+      projError = error;
+    }
     
     if (projError) throw projError;
     const project = mapProjectFromDb(dbProj);
@@ -422,17 +673,40 @@ export const supabaseService = {
       .select('*')
       .eq('budget_id', budgetId);
 
-    const frozenTotalAmount = dbBudgetItemData 
+    const frozenNet = dbBudgetItemData 
       ? dbBudgetItemData.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.unit_price)), 0)
       : 0;
+    const frozenTotalAmount = Math.round(frozenNet * 100) / 100;
 
-    // 3. Update Budget (setApproved and link project_id)
+    // 3. Move files in storage if status changes to Aprobado
+    const { data: currentBudget } = await supabase
+      .from('budgets')
+      .select('status, budget_number, backup_files')
+      .eq('id', budgetId)
+      .single();
+
+    let finalFiles = [];
+    if (currentBudget) {
+      if (currentBudget.status !== 'Aprobado') {
+        finalFiles = await moveQuoteFiles(
+          currentBudget.budget_number,
+          currentBudget.status,
+          'Aprobado',
+          currentBudget.backup_files || []
+        );
+      } else {
+        finalFiles = currentBudget.backup_files || [];
+      }
+    }
+
+    // 4. Update Budget (setApproved, link project_id, and update files)
     const { error: budgetError } = await supabase
       .from('budgets')
       .update({
         status: 'Aprobado',
         project_id: project.id,
-        total_amount: frozenTotalAmount
+        total_amount: frozenTotalAmount,
+        backup_files: finalFiles
       })
       .eq('id', budgetId);
     

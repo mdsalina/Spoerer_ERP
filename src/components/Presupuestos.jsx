@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import mammoth from 'mammoth';
 
 // Helper to parse date strings of format DD/MM/YYYY or YYYY-MM-DD to Date object
@@ -34,7 +34,7 @@ const isQuoteInPeriod = (quote, period) => {
   return quoteDate >= cutoffDate;
 };
 
-export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onApproveBudgetAndCreateProject }) {
+export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onApproveBudgetAndCreateProject, installments }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,15 +47,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setIsViewModalOpen(true);
   };
 
-  const findQuoteBillingTable = (quoteId) => {
-    if (!projects) return null;
-    for (const proj of projects) {
-      const budgetMatch = proj.budgets?.find(b => b.quoteId === quoteId);
-      if (budgetMatch) {
-        return budgetMatch.billingTable || [];
-      }
-    }
-    return null;
+  const findQuoteBillingTable = (budgetId) => {
+    if (!installments) return null;
+    const filtered = installments.filter(i => i.origin_budget_id === budgetId);
+    return filtered.length > 0 ? filtered : null;
   };
 
   const [editBillingTable, setEditBillingTable] = useState([]);
@@ -115,9 +110,18 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
   const [billingTable, setBillingTable] = useState([]);
   const [validationError, setValidationError] = useState('');
   const [approvingQuoteBackupFiles, setApprovingQuoteBackupFiles] = useState([]);
+  const [matchedProjectId, setMatchedProjectId] = useState(null);
+  const [prefilledFromProjectId, setPrefilledFromProjectId] = useState(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef(null);
+
+  const filteredProjects = projects && projectName
+    ? projects.filter(p => p.projectName.toLowerCase().includes(projectName.toLowerCase()))
+    : [];
 
   // New quote form state
   const [quoteId, setQuoteId] = useState('');
+  const [currentBudgetUuid, setCurrentBudgetUuid] = useState(null);
   const [selectedClient, setSelectedClient] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [validity, setValidity] = useState(30);
@@ -169,6 +173,26 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
           console.error('FileReader error:', error);
           setDocxHtml('<p class="text-error font-bold text-center py-4">Error al leer el archivo de Word.</p>');
         };
+      } else if (previewFile.url) {
+        // Fetch from Supabase Storage and convert
+        fetch(previewFile.url)
+          .then(res => {
+            if (!res.ok) throw new Error('Network response was not ok');
+            return res.arrayBuffer();
+          })
+          .then(async (arrayBuffer) => {
+            try {
+              const result = await mammoth.convertToHtml({ arrayBuffer });
+              setDocxHtml(result.value || '<p class="text-on-surface-variant italic text-center">Documento vacío.</p>');
+            } catch (error) {
+              console.error('Error al convertir docx a html:', error);
+              setDocxHtml('<p class="text-error font-bold text-center py-4">Error al generar la vista previa de Word.</p>');
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching docx:', error);
+            setDocxHtml('<p class="text-error font-bold text-center py-4">Error al descargar el archivo de Word para la vista previa.</p>');
+          });
       } else {
         // Fallback for mocked files in initial state
         setDocxHtml('<div class="text-center py-10"><span class="material-symbols-outlined text-[48px] text-amber-500">warning</span><p class="font-bold text-body-md mt-2 text-on-surface">Vista previa no disponible para archivos simulados.</p><p class="text-label-md text-on-surface-variant mt-1">Por favor descarga el archivo para poder visualizarlo.</p></div>');
@@ -176,10 +200,23 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     }
   }, [previewFile]);
 
+  // Close project suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   // Helper to suggest next quote ID
   const getNextQuoteId = () => {
     const numericIds = quotes
-      .map(q => parseInt(q.id.replace(/\D/g, '')))
+      .map(q => parseInt((q.quoteId || '').replace(/\D/g, '')))
       .filter(id => !isNaN(id));
     const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
     return String(maxId + 1).padStart(4, '0');
@@ -198,10 +235,17 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     if (!projects) return;
     const existing = projects.find(p => p.projectName.toLowerCase() === name.toLowerCase());
     if (existing) {
-      setSuperficie(existing.superficie || '');
-      setRentabilidad(existing.rentabilidad || '');
-      setAnio(existing.anio || new Date().getFullYear());
-      setCliente(existing.cliente || '');
+      setMatchedProjectId(existing.id);
+      if (existing.id !== prefilledFromProjectId) {
+        setSuperficie(existing.superficie || '');
+        setRentabilidad(existing.rentabilidad || '');
+        setAnio(existing.anio || new Date().getFullYear());
+        setCliente(existing.cliente || '');
+        setPrefilledFromProjectId(existing.id);
+      }
+    } else {
+      setMatchedProjectId(null);
+      setPrefilledFromProjectId(null);
     }
   };
 
@@ -407,6 +451,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     const rawProjectName = nameParts.slice(1).join('-').split(' - ')[0]?.trim() || projectName;
 
     const projectForm = {
+      id: matchedProjectId,
       projectNumber: projectNumber,
       rawProjectName: rawProjectName,
       clientId: approvingQuote.clientId,
@@ -422,11 +467,18 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setApprovingQuote(null);
     setApprovingQuoteBackupFiles([]);
     setValidationError('');
+    setMatchedProjectId(null);
+    setPrefilledFromProjectId(null);
+    setShowSuggestions(false);
   };
 
   const handleStatusChange = (id, newStatus) => {
     const quote = quotes.find(q => q.id === id);
     if (quote) {
+      if (quote.status === 'Aprobado' || quote.status === 'Aprovado') {
+        alert('Por razones de seguridad, no se puede cambiar el estado de un presupuesto que ya está aprobado.');
+        return;
+      }
       if (newStatus === 'Aprobado') {
         setApprovingQuote(quote);
         setApprovingQuoteBackupFiles(quote.backupFiles || []);
@@ -435,6 +487,9 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
         setRentabilidad('');
         setDescripcion(quote.title || '');
         setValidationError('');
+        setMatchedProjectId(null);
+        setPrefilledFromProjectId(null);
+        setShowSuggestions(false);
         
         const d = new Date();
         d.setMonth(d.getMonth() + 1);
@@ -483,6 +538,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
   // Open modal for a new quote
   const handleOpenNewQuoteModal = () => {
     setQuoteId(getNextQuoteId());
+    setCurrentBudgetUuid(null);
     setSelectedClient('');
     setIssueDate(new Date().toISOString().split('T')[0]);
     setValidity(30);
@@ -496,7 +552,8 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
   // Open modal to edit an existing quote
   const handleEditQuote = (quote) => {
-    setQuoteId(quote.id);
+    setQuoteId(quote.quoteId);
+    setCurrentBudgetUuid(quote.id);
     const matchedClient = clients.find(c =>
       c.name === quote.clientName ||
       c.company === quote.company ||
@@ -522,7 +579,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     // Calculate initial subtotal
     const initialSubtotal = quote.items && quote.items.length > 0
       ? quote.items.reduce((sum, item) => sum + (item.qty * item.price), 0)
-      : (quote.amount / 1.19);
+      : quote.amount;
     setSubtotal(Math.round(initialSubtotal * 100) / 100);
 
     setBackupFiles(quote.backupFiles || []);
@@ -548,10 +605,11 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
     // Check if the padded quoteId matches an existing quote
     const paddedId = quoteId.padStart(4, '0');
-    const existing = quotes.find(q => q.id === quoteId || q.id === paddedId);
+    const existing = quotes.find(q => q.quoteId === quoteId || q.quoteId === paddedId);
 
     if (existing) {
       setIsExistingQuote(true);
+      setCurrentBudgetUuid(existing.id);
       const matchedClient = clients.find(c =>
         c.name === existing.clientName ||
         c.company === existing.company ||
@@ -576,7 +634,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
       const initialSubtotal = existing.items && existing.items.length > 0
         ? existing.items.reduce((sum, item) => sum + (item.qty * item.price), 0)
-        : (existing.amount / 1.19);
+        : existing.amount;
       setSubtotal(Math.round(initialSubtotal * 100) / 100);
 
       setBackupFiles(existing.backupFiles || []);
@@ -593,6 +651,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       }
     } else {
       setIsExistingQuote(false);
+      setCurrentBudgetUuid(null);
       setEditBillingTable([]);
     }
   }, [quoteId, isModalOpen, quotes, clients]);
@@ -841,36 +900,39 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     }
 
     // Determine status (preserve existing quote status, or default to Borrador)
-    const existingQuote = quotes.find(q => q.id === formattedId);
+    const existingQuote = quotes.find(q => q.quoteId === formattedId || q.id === currentBudgetUuid);
     const finalStatus = existingQuote ? existingQuote.status : 'Borrador';
 
     // If approved, validate sum of installments
     if (finalStatus === 'Aprobado' || finalStatus === 'Aprovado') {
       const currentSum = editBillingTable.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
       const roundedSum = Math.round(currentSum * 100) / 100;
-      const expectedTotal = Math.round((parseFloat(total) || 0) * 100) / 100;
+      const expectedTotal = Math.round((parseFloat(subtotal) || 0) * 100) / 100;
       if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
-        alert(`La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el total del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
+        alert(`La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el subtotal del presupuesto (antes de impuestos) (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
         return;
       }
     }
 
     const newQuote = {
-      id: formattedId,
+      id: currentBudgetUuid || formattedId,
+      quoteId: formattedId,
+      clientId: clientObj.id,
       clientName: clientName,
       company: companyName,
       title: quoteTitle,
       date: issueDate.split('-').reverse().join('/'),
-      amount: total,
+      amount: parseFloat(subtotal) || 0,
       validity: `${validity} días`,
       status: finalStatus,
       items: [
         { id: 1, description: quoteTitle || 'Servicios ERP', qty: 1, price: parseFloat(subtotal) || 0 }
       ],
-      backupFiles: backupFiles
+      backupFiles: backupFiles,
+      projectId: existingQuote ? existingQuote.projectId : null
     };
 
-    onAddQuote(newQuote, quoteItems);
+    onAddQuote(newQuote, newQuote.items, editBillingTable);
 
     // Reset form
     setSelectedClient('');
@@ -880,6 +942,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setBackupFiles([]);
     setEditBillingTable([]);
     setQuoteId('');
+    setCurrentBudgetUuid(null);
     setIsExistingQuote(false);
     setIsModalOpen(false);
   };
@@ -888,7 +951,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
   const filteredQuotes = quotes.filter(quote => {
     const matchesSearch =
       quote.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      quote.quoteId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       quote.title.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
@@ -922,7 +985,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
   const rejectedQuotesCount = filteredByPeriodQuotes
     .filter(q => q.status === 'Rechazado').length;
 
-  const existingQuoteObj = quotes.find(q => q.id === quoteId || q.id === quoteId.padStart(4, '0'));
+  const existingQuoteObj = quotes.find(q => q.quoteId === quoteId || q.quoteId === quoteId.padStart(4, '0') || q.id === currentBudgetUuid);
 
   return (
     <div className="space-y-xl animate-fade-in text-left">
@@ -1006,7 +1069,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
               {filteredQuotes.length > 0 ? (
                 filteredQuotes.map((quote) => (
                   <tr key={quote.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-md font-body-md font-bold text-primary">{quote.id}</td>
+                    <td className="p-md font-body-md font-bold text-primary">{quote.quoteId}</td>
                     <td className="p-md">
                       <div className="flex flex-col">
                         <span className="font-body-md font-bold text-on-surface">{quote.clientName}</span>
@@ -1047,7 +1110,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                       <select
                         value={quote.status}
                         onChange={(e) => handleStatusChange(quote.id, e.target.value)}
-                        className={`px-2 py-0.5 rounded-full text-label-sm font-bold border cursor-pointer outline-none transition-all ${
+                        disabled={quote.status === 'Aprobado' || quote.status === 'Aprovado'}
+                        className={`px-2 py-0.5 rounded-full text-label-sm font-bold border outline-none transition-all ${
+                          quote.status === 'Aprobado' || quote.status === 'Aprovado' ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
+                        } ${
                           quote.status === 'Borrador'
                             ? 'bg-slate-100 text-slate-700 border-slate-300'
                             : quote.status === 'En revisión'
@@ -1198,7 +1264,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
           <div className="relative bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
             <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
               <div>
-                <h2 className="font-headline-md text-headline-md text-primary font-bold">Visualizar Presupuesto #{viewingQuote.id}</h2>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Visualizar Presupuesto #{viewingQuote.quoteId}</h2>
                 <p className="text-body-sm text-on-surface-variant font-bold">Detalle completo de la cotización y facturación asociada.</p>
               </div>
               <button
@@ -1703,7 +1769,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                   {(() => {
                     const currentSum = editBillingTable.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
                     const roundedSum = Math.round(currentSum * 100) / 100;
-                    const expectedTotal = Math.round((parseFloat(total) || 0) * 100) / 100;
+                    const expectedTotal = Math.round((parseFloat(subtotal) || 0) * 100) / 100;
                     const diff = expectedTotal - roundedSum;
                     
                     if (Math.abs(diff) >= 0.02) {
@@ -1711,7 +1777,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                         <div className="p-md bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-body-sm">
                           <span className="material-symbols-outlined text-[20px]">warning</span>
                           <span>
-                            La suma de las cuotas ({roundedSum.toFixed(2)} UF) no coincide con el total del presupuesto ({expectedTotal.toFixed(2)} UF). Diferencia: {diff.toFixed(2)} UF.
+                            La suma de las cuotas ({roundedSum.toFixed(2)} UF) no coincide con el subtotal del presupuesto (antes de impuestos) ({expectedTotal.toFixed(2)} UF). Diferencia: {diff.toFixed(2)} UF.
                           </span>
                         </div>
                       );
@@ -1896,44 +1962,48 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
         </div>
       )}
       {/* Delete Confirmation Modal */}
-      {deleteConfirmId !== null && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-xl shadow-2xl p-lg max-w-sm w-full text-center border border-outline-variant/30 animate-scale-up space-y-md animate-fade-in">
-            <div className="mx-auto w-14 h-14 bg-red-50 rounded-full flex items-center justify-center text-red-600">
-              <span className="material-symbols-outlined text-[32px] text-error animate-pulse" style={{ fontVariationSettings: "'FILL' 0" }}>
-                warning
-              </span>
-            </div>
-            <div className="space-y-xs text-center">
-              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">¿Eliminar Presupuesto?</h3>
-              <p className="text-body-md text-on-surface-variant leading-relaxed">
-                ¿Está seguro de que desea eliminar el presupuesto <strong>#{deleteConfirmId}</strong>? Esta acción no se puede deshacer.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmId(null)}
-                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all font-bold text-label-md active:scale-95 border border-slate-200"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (onDeleteQuote) {
-                    onDeleteQuote(deleteConfirmId);
-                  }
-                  setDeleteConfirmId(null);
-                }}
-                className="flex-1 py-2 bg-error text-white rounded-lg hover:brightness-105 transition-all font-bold text-label-md active:scale-95 shadow-md shadow-error/15"
-              >
-                Eliminar
-              </button>
+      {deleteConfirmId !== null && (() => {
+        const quoteToDelete = quotes.find(q => q.id === deleteConfirmId);
+        const quoteDisplayId = quoteToDelete ? (quoteToDelete.quoteId || deleteConfirmId) : deleteConfirmId;
+        return (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-xl shadow-2xl p-lg max-w-sm w-full text-center border border-outline-variant/30 animate-scale-up space-y-md animate-fade-in">
+              <div className="mx-auto w-14 h-14 bg-red-50 rounded-full flex items-center justify-center text-red-600">
+                <span className="material-symbols-outlined text-[32px] text-error animate-pulse" style={{ fontVariationSettings: "'FILL' 0" }}>
+                  warning
+                </span>
+              </div>
+              <div className="space-y-xs text-center">
+                <h3 className="font-headline-sm text-headline-sm text-primary font-bold">¿Eliminar Presupuesto?</h3>
+                <p className="text-body-md text-on-surface-variant leading-relaxed">
+                  ¿Está seguro de que desea eliminar el presupuesto <strong>#{quoteDisplayId}</strong>? Esta acción no se puede deshacer.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-all font-bold text-label-md active:scale-95 border border-slate-200"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDeleteQuote) {
+                      onDeleteQuote(deleteConfirmId);
+                    }
+                    setDeleteConfirmId(null);
+                  }}
+                  className="flex-1 py-2 bg-error text-white rounded-lg hover:brightness-105 transition-all font-bold text-label-md active:scale-95 shadow-md shadow-error/15"
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {/* Modal: Aprobar Presupuesto y Crear Proyecto */}
       {isApproveModalOpen && approvingQuote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm animate-fade-in">
@@ -1944,7 +2014,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 <h2 className="font-headline-md text-headline-md text-primary font-bold">Aprobar Presupuesto y Crear Proyecto</h2>
                 <p className="text-body-md text-on-surface-variant flex items-center gap-2">
                   <span className="inline-block w-2.5 h-2.5 rounded-full bg-secondary animate-pulse"></span>
-                  <span>Configurando proyecto para el Presupuesto <strong>#{approvingQuote.id}</strong></span>
+                  <span>Configurando proyecto para el Presupuesto <strong>#{approvingQuote.quoteId}</strong></span>
                 </p>
               </div>
               <button
@@ -1952,6 +2022,9 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 onClick={() => {
                   setIsApproveModalOpen(false);
                   setApprovingQuote(null);
+                  setMatchedProjectId(null);
+                  setPrefilledFromProjectId(null);
+                  setShowSuggestions(false);
                 }}
                 className="p-2 hover:bg-slate-100 rounded-full transition-all"
               >
@@ -1987,19 +2060,40 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                       <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                         Nº y Nombre del Proyecto
                       </label>
-                      <div className="flex gap-2">
-                        <input
-                          className="flex-grow border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
-                          type="text"
-                          value={projectName}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setProjectName(val);
-                            checkAndPrefillExistingProject(val);
-                          }}
-                          placeholder="Ej: 0280-NombreProyecto - Cliente"
-                          required
-                        />
+                      <div className="flex gap-2 relative">
+                        <div className="relative flex-grow" ref={suggestionsRef}>
+                          <input
+                            className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                            type="text"
+                            value={projectName}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setProjectName(val);
+                              checkAndPrefillExistingProject(val);
+                              setShowSuggestions(true);
+                            }}
+                            onFocus={() => setShowSuggestions(true)}
+                            placeholder="Ej: 0280-NombreProyecto - Cliente"
+                            required
+                          />
+                          {showSuggestions && filteredProjects.length > 0 && (
+                            <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto custom-scrollbar border-outline-variant/30 py-1">
+                              {filteredProjects.map((proj) => (
+                                <div
+                                  key={proj.id}
+                                  onClick={() => {
+                                    setProjectName(proj.projectName);
+                                    checkAndPrefillExistingProject(proj.projectName);
+                                    setShowSuggestions(false);
+                                  }}
+                                  className="px-4 py-2.5 text-body-md text-on-surface hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-100 last:border-b-0 font-medium"
+                                >
+                                  {proj.projectName}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
                           onClick={handleFolderSearch}
@@ -2078,7 +2172,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                         <input
                           className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 bg-slate-100/80 text-on-surface-variant/80 cursor-not-allowed outline-none"
                           type="text"
-                          value={approvingQuote.id}
+                          value={approvingQuote.quoteId}
                           readOnly
                         />
                       </div>
@@ -2348,6 +2442,9 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                   onClick={() => {
                     setIsApproveModalOpen(false);
                     setApprovingQuote(null);
+                    setMatchedProjectId(null);
+                    setPrefilledFromProjectId(null);
+                    setShowSuggestions(false);
                   }}
                   className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
                 >

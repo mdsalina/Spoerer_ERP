@@ -125,10 +125,10 @@ export default function App() {
   };
 
   // QUOTES (BUDGETS) ACTIONS
-  const addQuote = async (newQuote, items) => {
+  const addQuote = async (newQuote, items, billingInstallments) => {
     try {
-      // Si newQuote no tiene items directamente, le pasamos los que se editaron
-      const savedQuote = await supabaseService.saveQuote(newQuote, items || newQuote.items || []);
+      const result = await supabaseService.saveQuote(newQuote, items || newQuote.items || [], billingInstallments);
+      const savedQuote = result.budget;
       setQuotes(prev => {
         const exists = prev.some(q => q.id === savedQuote.id);
         if (exists) {
@@ -136,6 +136,12 @@ export default function App() {
         }
         return [savedQuote, ...prev];
       });
+      if (result.installments) {
+        setInstallments(prev => {
+          const filtered = prev.filter(i => i.origin_budget_id !== savedQuote.id);
+          return [...filtered, ...result.installments];
+        });
+      }
     } catch (err) {
       alert("Error al guardar el presupuesto: " + err.message);
     }
@@ -145,6 +151,7 @@ export default function App() {
     try {
       await supabaseService.deleteQuote(id);
       setQuotes(prev => prev.filter(q => q.id !== id));
+      setInstallments(prev => prev.filter(i => i.origin_budget_id !== id));
     } catch (err) {
       alert("Error al eliminar presupuesto: " + err.message);
     }
@@ -161,11 +168,18 @@ export default function App() {
       );
       
       // Actualizar estados planos locales
-      setProjects(prev => [result.project, ...prev]);
+      setProjects(prev => {
+        const exists = prev.some(p => p.id === result.project.id);
+        if (exists) {
+          return prev.map(p => p.id === result.project.id ? result.project : p);
+        } else {
+          return [result.project, ...prev];
+        }
+      });
       setQuotes(prev => prev.map(q => q.id === budgetId ? result.budget : q));
       setInstallments(prev => [...prev, ...result.installments]);
       
-      alert("¡Presupuesto aprobado y Proyecto creado con éxito en Supabase!");
+      alert("¡Presupuesto aprobado y Proyecto guardado con éxito!");
     } catch (err) {
       console.error("Error al aprobar presupuesto:", err);
       alert("Error al aprobar presupuesto: " + err.message);
@@ -217,17 +231,65 @@ export default function App() {
     }
   };
 
-  const handleSaveInstallments = async (installmentsList) => {
+  const handleSaveInstallments = async (budgetId, installmentsList) => {
+    // Fallback if called with one argument
+    if (Array.isArray(budgetId)) {
+      installmentsList = budgetId;
+      budgetId = installmentsList[0]?.origin_budget_id;
+    }
+    if (!budgetId) {
+      alert("Error: No se pudo identificar el presupuesto asociado.");
+      return;
+    }
+
     try {
       setLoading(true);
-      await Promise.all(installmentsList.map(inst => 
-        supabaseService.updateInstallment(inst.id, {
-          date: inst.date,
-          status: inst.status,
-          uf: inst.uf,
-          comment: inst.comment
-        })
-      ));
+
+      // Find original installments for this budget
+      const originalInsts = installments.filter(inst => inst.origin_budget_id === budgetId);
+
+      // Identify deleted installments
+      const deletedInsts = originalInsts.filter(orig => !installmentsList.some(curr => curr.id === orig.id));
+
+      // Identify new installments
+      const newInsts = installmentsList.filter(inst => typeof inst.id === 'string' && inst.id.startsWith('temp-'));
+
+      // Identify updated installments
+      const updatedInsts = installmentsList.filter(inst => !newInsts.some(ni => ni.id === inst.id));
+
+      // Execute deletions
+      if (deletedInsts.length > 0) {
+        await Promise.all(deletedInsts.map(inst => supabaseService.deleteInstallment(inst.id)));
+      }
+
+      // Execute updates
+      if (updatedInsts.length > 0) {
+        await Promise.all(updatedInsts.map(inst => 
+          supabaseService.updateInstallment(inst.id, {
+            numQuota: inst.numQuota,
+            date: inst.date,
+            status: inst.status,
+            uf: inst.uf,
+            comment: inst.comment
+          })
+        ));
+      }
+
+      // Execute insertions
+      if (newInsts.length > 0) {
+        await Promise.all(newInsts.map(inst => 
+          supabaseService.createInstallment({
+            project_id: inst.project_id,
+            origin_budget_id: inst.origin_budget_id,
+            numQuota: inst.numQuota,
+            date: inst.date,
+            uf: inst.uf,
+            status: inst.status,
+            comment: inst.comment
+          })
+        ));
+      }
+
       const freshInsts = await supabaseService.getInstallments();
       setInstallments(freshInsts);
       alert("¡Tabla de facturación guardada exitosamente en Supabase!");
@@ -372,6 +434,7 @@ export default function App() {
               onDeleteQuote={deleteQuote}
               projects={projects}
               onApproveBudgetAndCreateProject={handleApproveBudgetAndCreateProject}
+              installments={installments}
             />
           )}
           {currentTab === 'facturacion' && (
