@@ -177,16 +177,31 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
         </div>
         <button 
           onClick={() => { handleCloseModal(); setIsModalOpen(true); }}
-          className="bg-secondary text-white px-lg py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:opacity-90 transition-all active:scale-95"
+          className="flex items-center gap-2 px-md py-2 bg-secondary text-white rounded hover:brightness-105 transition-all font-label-md font-bold active:scale-95"
         >
-          <span className="material-symbols-outlined text-[20px]">person_add</span>
-          <span>+ Crear Cliente</span>
+          <span className="material-symbols-outlined text-[16px]">person_add</span>
+          <span>Crear Cliente</span>
         </button>
+      </div>
+
+      {/* KPI Dashboard */}
+      <div className="w-full md:w-1/4">
+        <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Clientes Registrados</span>
+            <div className="font-display-lg text-[34px] text-blue-950 font-extrabold">
+              {clients.length}
+            </div>
+          </div>
+          <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">groups</span>
+          </div>
+        </div>
       </div>
 
       {/* Filter Bar */}
       <section className="glass-card rounded-xl p-md flex flex-wrap items-end gap-md shadow-sm">
-        <div className="flex-grow min-w-[240px]">
+        <div className="flex-grow max-w-lg min-w-[240px]">
           <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Cliente</label>
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
@@ -201,78 +216,67 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
         </div>
         <button 
           onClick={() => { setSearchTerm(''); }}
-          className="px-lg py-2 border border-outline-variant text-on-surface-variant rounded-lg font-bold hover:bg-surface-container-low transition-colors flex items-center gap-sm"
+          className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
         >
-          <span className="material-symbols-outlined text-[18px]">clear_all</span>
+          <span className="material-symbols-outlined text-[16px]">clear_all</span>
           <span>Limpiar</span>
         </button>
       </section>
 
       {/* CRM Main Table Container */}
-      <div className="glass-card rounded-xl shadow-sm overflow-hidden">
-        <div className="bg-surface-container-low px-lg py-md border-b border-outline-variant flex justify-between items-center">
-          <h3 className="font-title-lg text-title-lg text-primary font-semibold">Lista de Clientes</h3>
-          <div className="flex gap-sm">
-            <button className="p-2 hover:bg-white rounded transition-colors text-on-surface-variant" title="Exportar CSV">
-              <span className="material-symbols-outlined">download</span>
-            </button>
-            <button className="p-2 hover:bg-white rounded transition-colors text-on-surface-variant" title="Imprimir">
-              <span className="material-symbols-outlined">print</span>
-            </button>
-          </div>
-        </div>
+      <div className="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
-              <tr className="bg-surface-container-low/50">
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">RUT</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Nombre o Razón Social</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Giro</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Contacto</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Correo Electrónico</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant">Teléfono</th>
-                <th className="px-lg py-4 font-label-md text-label-md text-on-surface-variant uppercase border-b border-outline-variant text-right">Acciones</th>
+              <tr className="bg-surface-container-low border-b border-outline-variant">
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">RUT</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Nombre o Razón Social</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Giro</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Contacto</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Correo Electrónico</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Teléfono</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-center">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-outline-variant/30">
+            <tbody className="divide-y divide-outline-variant">
               {filteredClients.length > 0 ? (
                 filteredClients.map((client) => (
-                  <tr key={client.id} className="hover:bg-surface-container-low/30 transition-colors group">
-                    <td className="px-lg py-4 text-body-md text-primary font-medium">{client.rut || 'N/A'}</td>
-                    <td className="px-lg py-4">
+                  <tr key={client.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="p-md font-body-md font-bold text-primary">{client.rut || 'N/A'}</td>
+                    <td className="p-md">
                       <div className="flex items-center gap-sm">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-secondary-container text-on-secondary-container">
                           {client.initials}
                         </div>
-                        <span className="font-body-md text-body-md text-primary font-medium">{client.company}</span>
+                        <span className="font-body-md font-bold text-on-surface">{client.company}</span>
                       </div>
                     </td>
-                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.giro || 'N/A'}</td>
-                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.name || 'N/A'}</td>
-                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.email}</td>
-                    <td className="px-lg py-4 text-body-md text-on-surface-variant">{client.phone}</td>
-                    <td className="px-lg py-4 text-right">
-                      <div className="flex justify-end gap-md md:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="p-md font-body-md text-on-surface-variant">{client.giro || 'N/A'}</td>
+                    <td className="p-md font-body-md text-on-surface">{client.name || 'N/A'}</td>
+                    <td className="p-md font-body-md text-on-surface">{client.email}</td>
+                    <td className="p-md font-body-md text-on-surface">{client.phone}</td>
+                    <td className="p-md text-center">
+                      <div className="flex items-center justify-center gap-2">
                         <button 
                           onClick={() => setViewingClient(client)}
-                          className="text-on-surface-variant hover:text-secondary transition-colors" 
+                          className="p-1 hover:bg-slate-100 rounded text-secondary hover:text-secondary-fixed-dim transition-all" 
                           title="Ver Detalle"
                         >
-                          <span className="material-symbols-outlined text-lg">visibility</span>
+                          <span className="material-symbols-outlined text-[20px]">visibility</span>
                         </button>
                         <button 
                           onClick={() => handleOpenEdit(client)}
-                          className="text-on-surface-variant hover:text-primary transition-colors" 
+                          className="p-1 hover:bg-slate-100 rounded text-secondary hover:text-secondary-fixed-dim transition-all" 
                           title="Editar"
                         >
-                          <span className="material-symbols-outlined text-lg">edit</span>
+                          <span className="material-symbols-outlined text-[20px]">edit</span>
                         </button>
                         <button 
                           onClick={() => setClientToDelete(client)}
-                          className="text-on-surface-variant hover:text-error transition-colors" 
+                          className="p-1 hover:bg-red-50 rounded text-error hover:text-red-700 transition-all" 
                           title="Eliminar"
                         >
-                          <span className="material-symbols-outlined text-lg">delete</span>
+                          <span className="material-symbols-outlined text-[20px]">delete</span>
                         </button>
                       </div>
                     </td>
@@ -298,8 +302,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
               <span className="material-symbols-outlined">chevron_left</span>
             </button>
             <button className="w-8 h-8 flex items-center justify-center rounded bg-secondary text-white font-bold text-xs">1</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-white text-on-surface-variant text-xs">2</button>
-            <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-white text-on-surface-variant">
+            <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-white text-on-surface-variant disabled:opacity-30" disabled>
               <span className="material-symbols-outlined">chevron_right</span>
             </button>
           </div>

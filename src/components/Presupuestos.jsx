@@ -958,7 +958,9 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       statusFilter === 'Todos' ||
       quote.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesPeriod = isQuoteInPeriod(quote, calcPeriod);
+
+    return matchesSearch && matchesStatus && matchesPeriod;
   });
 
   // Calculate totals based on selected period
@@ -996,13 +998,6 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
           <p className="text-on-surface-variant font-body-md mt-1">Crea, edita y haz seguimiento de cotizaciones para tus clientes.</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => setSearchTerm('')}
-            className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[16px]">filter_list</span>
-            <span>Limpiar</span>
-          </button>
           <button className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95">
             <span className="material-symbols-outlined text-[16px]">file_download</span>
             <span>Exportar PDF</span>
@@ -1017,105 +1012,124 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
         </div>
       </div>
 
-      {/* Sección de Resumen Financiero por Período */}
-      <div className="glass-card rounded-xl p-lg shadow-sm space-y-md">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h3 className="font-title-lg text-title-lg text-primary font-bold">Resumen de Presupuestos</h3>
-            <p className="text-on-surface-variant text-body-sm">
-              Monto acumulado en UF según el estado del presupuesto en el período seleccionado.
-            </p>
+      {/* Tarjetas KPI sin contenedor externo */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+        {/* Tarjeta Aprobados */}
+        <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider">Aprobados ({approvedQuotesCount})</span>
+            <div className="font-display-lg text-[34px] text-emerald-950 font-extrabold">
+              {totalApproved.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-emerald-800">UF</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label htmlFor="calc-period-select" className="text-label-md text-on-surface-variant uppercase font-semibold">
-              Período de cálculo:
-            </label>
-            <select
-              id="calc-period-select"
-              value={calcPeriod}
-              onChange={(e) => setCalcPeriod(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none cursor-pointer"
-            >
-              <option value="1">1 mes</option>
-              <option value="6">6 Meses</option>
-              <option value="12">12 meses</option>
-              <option value="24">24 meses</option>
-              <option value="36">36 meses</option>
-              <option value="all">all</option>
-            </select>
+          <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">check_circle</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
-          {/* Tarjeta Aprobados */}
-          <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
-            <div className="space-y-1">
-              <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider">Aprobados ({approvedQuotesCount})</span>
-              <div className="font-display-lg text-display-lg text-emerald-950 font-extrabold">
-                {totalApproved.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-emerald-800">UF</span>
-              </div>
-            </div>
-            <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[32px]">check_circle</span>
+        {/* Tarjeta Enviados */}
+        <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Enviados ({sentQuotesCount})</span>
+            <div className="font-display-lg text-[34px] text-blue-950 font-extrabold">
+              {totalSent.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-blue-800">UF</span>
             </div>
           </div>
+          <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">send</span>
+          </div>
+        </div>
 
-          {/* Tarjeta Enviados */}
-          <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
-            <div className="space-y-1">
-              <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Enviados ({sentQuotesCount})</span>
-              <div className="font-display-lg text-display-lg text-blue-950 font-extrabold">
-                {totalSent.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-blue-800">UF</span>
-              </div>
-            </div>
-            <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[32px]">send</span>
+        {/* Tarjeta Rechazados */}
+        <div className="bg-red-50/40 border border-red-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-red-800 uppercase font-bold tracking-wider">Rechazados ({rejectedQuotesCount})</span>
+            <div className="font-display-lg text-[34px] text-red-950 font-extrabold">
+              {totalRejected.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-red-800">UF</span>
             </div>
           </div>
-
-          {/* Tarjeta Rechazados */}
-          <div className="bg-red-50/40 border border-red-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
-            <div className="space-y-1">
-              <span className="text-label-md text-red-800 uppercase font-bold tracking-wider">Rechazados ({rejectedQuotesCount})</span>
-              <div className="font-display-lg text-display-lg text-red-950 font-extrabold">
-                {totalRejected.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-red-800">UF</span>
-              </div>
-            </div>
-            <div className="p-3 bg-red-100 rounded-full text-red-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[32px]">cancel</span>
-            </div>
+          <div className="p-3 bg-red-100 rounded-full text-red-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">cancel</span>
           </div>
         </div>
       </div>
 
       {/* Filter and Summary Bar */}
-      <section className="glass-card rounded-xl p-md flex flex-wrap items-center justify-between gap-md shadow-sm">
-        <div className="flex-grow max-w-md min-w-[240px]">
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-            <input
-              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none"
-              placeholder="Buscar por ID, cliente o descripción..."
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+      <section className="glass-card rounded-xl p-md flex flex-col lg:flex-row items-stretch lg:items-end gap-md justify-between shadow-sm">
+        {/* Left Side: Buscar and Limpiar */}
+        <div className="flex flex-wrap items-end gap-md w-full lg:w-auto">
+          <div className="flex-grow max-w-5xl min-w-[240px]">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Presupuesto</label>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+              <input
+                className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none"
+                placeholder="Buscar por ID, cliente o descripción..."
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
+          <button
+            onClick={() => { setSearchTerm(''); setStatusFilter('Todos'); setCalcPeriod('12'); }}
+            className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
+          >
+            <span className="material-symbols-outlined text-[16px]">clear_all</span>
+            <span>Limpiar</span>
+          </button>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {['Todos', 'Borrador', 'En revisión', 'Enviado', 'Aprobado', 'Rechazado'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-md py-1.5 rounded-lg text-body-sm transition-all font-semibold ${statusFilter === status
-                ? 'bg-primary text-white'
-                : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
-                }`}
-            >
-              {status}
-            </button>
-          ))}
+        {/* Right Side: Period and Status groups */}
+        <div className="flex flex-wrap items-end gap-md justify-end w-full lg:w-auto">
+          {/* Period Filter Button Group */}
+          <div className="flex flex-col gap-xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Período de cálculo</span>
+            <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant">
+              {[
+                { value: '1', label: '1M' },
+                { value: '6', label: '6M' },
+                { value: '12', label: '12M' },
+                { value: '24', label: '24M' },
+                { value: '36', label: '36M' },
+                { value: 'all', label: 'Todos' }
+              ].map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setCalcPeriod(p.value)}
+                  className={`px-3 py-1.5 rounded text-[11px] font-semibold transition-all ${
+                    calcPeriod === p.value 
+                      ? 'bg-primary text-white shadow-sm' 
+                      : 'text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status Filter Button Group */}
+          <div className="flex flex-col gap-xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Estado</span>
+            <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant">
+              {['Todos', 'Borrador', 'En revisión', 'Enviado', 'Aprobado', 'Rechazado'].map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-1.5 rounded text-[11px] font-semibold transition-all ${
+                    statusFilter === status
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1242,17 +1256,18 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
             </tbody>
           </table>
         </div>
-        {/* Pagination Footer */}
-        <div className="p-md bg-surface-container-low flex justify-between items-center border-t border-outline-variant">
-          <span className="text-label-md text-on-surface-variant">
-            Mostrando {filteredQuotes.length} de {quotes.length} presupuestos
-          </span>
-          <div className="flex gap-2">
-            <button className="p-2 border border-outline-variant rounded bg-white hover:bg-slate-50 transition-all disabled:opacity-50" disabled>
-              <span className="material-symbols-outlined text-sm">chevron_left</span>
+        {/* Pagination */}
+        <div className="px-lg py-md bg-surface-container-low border-t border-outline-variant flex items-center justify-between">
+          <p className="text-body-sm text-on-surface-variant italic">
+            Mostrando {filteredQuotes.length} de {quotes.length} presupuestos registrados
+          </p>
+          <div className="flex items-center gap-base">
+            <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-white text-on-surface-variant disabled:opacity-30" disabled>
+              <span className="material-symbols-outlined">chevron_left</span>
             </button>
-            <button className="p-2 border border-outline-variant rounded bg-white hover:bg-slate-50 transition-all">
-              <span className="material-symbols-outlined text-sm">chevron_right</span>
+            <button className="w-8 h-8 flex items-center justify-center rounded bg-secondary text-white font-bold text-xs">1</button>
+            <button className="w-8 h-8 flex items-center justify-center rounded hover:bg-white text-on-surface-variant disabled:opacity-30" disabled>
+              <span className="material-symbols-outlined">chevron_right</span>
             </button>
           </div>
         </div>

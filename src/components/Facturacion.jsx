@@ -444,83 +444,89 @@ export default function Facturacion({ projects, budgets, installments, clients, 
       </div>
 
       {/* SECTION A: Dashboard de KPIs Financieros */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-lg">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
         {/* KPI 1: Total por Facturar (UF) */}
-        <div className="bg-white p-lg border border-outline-variant rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Por Facturar (Planificado)</p>
-              <h3 className="font-display-md text-display-md text-primary mt-sm font-bold">
-                {formatUF(stats.totalPorFacturarUf)}
-              </h3>
-            </div>
-            <div className="bg-slate-100 p-2 rounded-lg text-slate-500">
-              <span className="material-symbols-outlined text-[24px]">calendar_today</span>
+        <div className="bg-slate-50/40 border border-slate-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-slate-800 uppercase font-bold tracking-wider">Por Facturar (Planificado)</span>
+            <div className="font-display-lg text-[34px] text-slate-950 font-extrabold">
+              {formatUF(stats.totalPorFacturarUf)}
             </div>
           </div>
-          <div className="mt-md text-[11px] text-on-surface-variant">
-            Suma total estimada en UF para el período
+          <div className="p-3 bg-slate-100 rounded-full text-slate-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">calendar_today</span>
           </div>
         </div>
 
         {/* KPI 2: Total Facturado Pendiente (CLP) */}
-        <div className="bg-white p-lg border border-outline-variant rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-label-md text-label-md text-amber-700 uppercase tracking-wider font-semibold">Facturado Pendiente</p>
-              <h3 className="font-display-md text-display-md text-amber-800 mt-sm font-bold">
-                {formatCLP(stats.totalFacturadoPendienteClp)}
-              </h3>
-            </div>
-            <div className="bg-amber-50 p-2 rounded-lg text-amber-600 border border-amber-100">
-              <span className="material-symbols-outlined text-[24px]">pending_actions</span>
+        <div className="bg-amber-50/40 border border-amber-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-amber-800 uppercase font-bold tracking-wider font-semibold">Facturado Pendiente</span>
+            <div className="font-display-lg text-[34px] text-amber-950 font-extrabold">
+              {formatCLP(stats.totalFacturadoPendienteClp)}
             </div>
           </div>
-          <div className="mt-md text-[11px] text-amber-700">
-            Con factura emitida para el período
+          <div className="p-3 bg-amber-100 rounded-full text-amber-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">pending_actions</span>
           </div>
         </div>
 
         {/* KPI 3: Total Recaudado (CLP) */}
-        <div className="bg-white p-lg border border-outline-variant rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-label-md text-label-md text-emerald-700 uppercase tracking-wider font-semibold">Total Recaudado</p>
-              <h3 className="font-display-md text-display-md text-emerald-800 mt-sm font-bold">
-                {formatCLP(stats.totalRecaudadoClp)}
-              </h3>
-            </div>
-            <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600 border border-emerald-100">
-              <span className="material-symbols-outlined text-[24px]">payments</span>
+        <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider font-semibold">Total Recaudado</span>
+            <div className="font-display-lg text-[34px] text-emerald-950 font-extrabold">
+              {formatCLP(stats.totalRecaudadoClp)}
             </div>
           </div>
-          <div className="mt-md text-[11px] text-emerald-700">
-            Pagos recibidos en el período
+          <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">payments</span>
           </div>
         </div>
 
         {/* KPI 4: Vencimientos Atrasados (UF) */}
-        <div className="bg-white p-lg border border-error/20 border-l-4 border-l-error rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="font-label-md text-label-md text-error uppercase tracking-wider font-bold">Vencido Atrasado</p>
-              <h3 className="font-display-md text-display-md text-error mt-sm font-bold">
-                {formatUF(stats.totalVencidoUf)}
-              </h3>
-            </div>
-            <div className="bg-error-container p-2 rounded-lg text-error">
-              <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+        <div className="bg-red-50/40 border border-red-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-red-800 uppercase font-bold tracking-wider font-bold">Vencido Atrasado</span>
+            <div className="font-display-lg text-[34px] text-red-950 font-extrabold">
+              {formatUF(stats.totalVencidoUf)}
             </div>
           </div>
-          <div className="mt-md text-[11px] text-error font-semibold">
-            Vencidos acumulados en el período
+          <div className="p-3 bg-red-100 rounded-full text-red-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
           </div>
         </div>
       </div>
 
       {/* SECTION B: Barra de Filtros y Búsqueda */}
-      <div className="bg-surface-bright border border-outline-variant rounded-xl p-lg shadow-sm flex flex-col lg:flex-row items-center gap-md justify-between">
-        <div className="flex flex-wrap items-center gap-md w-full lg:w-auto">
+      <section className="glass-card rounded-xl p-md flex flex-col lg:flex-row items-stretch lg:items-end gap-md justify-between shadow-sm">
+        {/* Left Side: Buscar and Limpiar */}
+        <div className="flex flex-wrap items-end gap-md w-full lg:w-auto">
+          <div className="flex-grow max-w-5xl min-w-[240px]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">Búsqueda General</span>
+            <div className="relative w-full">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+              <input 
+                className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none h-[38px]" 
+                placeholder="Factura, Proyecto o Cliente..." 
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          <button
+            onClick={() => { setSearchTerm(''); setTemporalFilter('Todos'); setStatusFilter('Todos'); setClientFilter('Todos'); }}
+            className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
+            title="Limpiar Filtros"
+          >
+            <span className="material-symbols-outlined text-[16px]">clear_all</span>
+            <span>Limpiar</span>
+          </button>
+        </div>
+
+        {/* Right Side: Filters */}
+        <div className="flex flex-wrap items-end gap-md justify-end w-full lg:w-auto">
           {/* Temporal Filter */}
           <div className="flex flex-col gap-xs">
             <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Período de Vencimiento</span>
@@ -550,17 +556,28 @@ export default function Facturacion({ projects, budgets, installments, clients, 
           {/* Status Filter */}
           <div className="flex flex-col gap-xs">
             <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Estado Cuota</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-md py-2 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none h-[38px] font-semibold text-primary"
-            >
-              <option value="Todos">Todos los estados</option>
-              <option value="Por facturar">Por facturar</option>
-              <option value="Vencida">Vencidas</option>
-              <option value="Factura emitida">Factura emitida</option>
-              <option value="Pagada">Pagada</option>
-            </select>
+            <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant">
+              {[
+                { value: 'Todos', label: 'Todos' },
+                { value: 'Por facturar', label: 'Por facturar' },
+                { value: 'Vencida', label: 'Vencidas' },
+                { value: 'Factura emitida', label: 'Factura emitida' },
+                { value: 'Pagada', label: 'Pagada' }
+              ].map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setStatusFilter(s.value)}
+                  className={`px-sm py-1.5 rounded text-[11px] font-semibold transition-all ${
+                    statusFilter === s.value 
+                      ? 'bg-primary text-white shadow-sm' 
+                      : 'text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Client Filter */}
@@ -580,22 +597,7 @@ export default function Facturacion({ projects, budgets, installments, clients, 
             </select>
           </div>
         </div>
-
-        {/* Text Search */}
-        <div className="flex flex-col gap-xs w-full lg:w-72">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Búsqueda General</span>
-          <div className="relative w-full">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-            <input 
-              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none h-[38px]" 
-              placeholder="Factura, Proyecto o Cliente..." 
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
+      </section>
 
       {/* SECTION C: Lista de Facturación Agrupada (Jerárquica) */}
       <div className="space-y-md">

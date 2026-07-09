@@ -274,63 +274,81 @@ export default function Proyectos({
 
       {/* KPI Dashboard */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-        {/* KPI 1 */}
-        <div className="glass-card rounded-xl p-lg shadow-sm border border-outline-variant/30 flex items-center gap-md">
-          <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">folder</span>
+        {/* KPI 1: Proyectos Activos */}
+        <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Proyectos Activos</span>
+            <div className="font-display-lg text-[34px] text-blue-950 font-extrabold">
+              {totalProjects}
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Proyectos Activos</span>
-            <span className="font-headline-md text-headline-md text-primary font-black mt-1">{totalProjects}</span>
-          </div>
-        </div>
-
-        {/* KPI 2 */}
-        <div className="glass-card rounded-xl p-lg shadow-sm border border-outline-variant/30 flex items-center gap-md">
-          <div className="w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center text-secondary flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">payments</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Monto Total Presupuestos</span>
-            <span className="font-headline-md text-headline-md text-secondary font-black mt-1">{totalUF.toLocaleString('es-CL', { maximumFractionDigits: 1 })} <span className="text-body-sm font-semibold">UF</span></span>
+          <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">folder</span>
           </div>
         </div>
 
-        {/* KPI 3 */}
-        <div className="glass-card rounded-xl p-lg shadow-sm border border-outline-variant/30 flex items-center gap-md">
-          <div className="w-12 h-12 bg-indigo-55 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-65 text-indigo-75 flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">monitoring</span>
+        {/* KPI 2: Monto Total Presupuestos */}
+        <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider">Monto Total Presupuestos</span>
+            <div className="font-display-lg text-[34px] text-emerald-950 font-extrabold">
+              {totalUF.toLocaleString('es-CL', { maximumFractionDigits: 1 })} <span className="text-body-md font-semibold text-emerald-800">UF</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Rentabilidad Promedio</span>
-            <span className="font-headline-md text-headline-md text-indigo-600 font-black mt-1">{avgProfitability}%</span>
+          <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">payments</span>
           </div>
         </div>
 
-        {/* KPI 4 */}
-        <div className="glass-card rounded-xl p-lg shadow-sm border border-outline-variant/30 flex items-center gap-md">
-          <div className="w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 flex-shrink-0">
-            <span className="material-symbols-outlined text-[28px]">architecture</span>
+        {/* KPI 3: Rentabilidad Promedio */}
+        <div className="bg-indigo-50/40 border border-indigo-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-indigo-800 uppercase font-bold tracking-wider">Rentabilidad Promedio</span>
+            <div className="font-display-lg text-[34px] text-indigo-950 font-extrabold">
+              {avgProfitability}<span className="text-body-md font-semibold text-indigo-800">%</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Superficie Total</span>
-            <span className="font-headline-md text-headline-md text-emerald-600 font-black mt-1">{totalSurface.toLocaleString('es-CL')} <span className="text-body-sm font-semibold">m²</span></span>
+          <div className="p-3 bg-indigo-100 rounded-full text-indigo-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">monitoring</span>
+          </div>
+        </div>
+
+        {/* KPI 4: Superficie Total */}
+        <div className="bg-teal-50/40 border border-teal-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+          <div className="space-y-1">
+            <span className="text-label-md text-teal-800 uppercase font-bold tracking-wider">Superficie Total</span>
+            <div className="font-display-lg text-[34px] text-teal-950 font-extrabold">
+              {totalSurface.toLocaleString('es-CL')} <span className="text-body-md font-semibold text-teal-800">m²</span>
+            </div>
+          </div>
+          <div className="p-3 bg-teal-100 rounded-full text-teal-600 flex items-center justify-center">
+            <span className="material-symbols-outlined text-[32px]">architecture</span>
           </div>
         </div>
       </section>
 
       {/* Search and Filters */}
-      <section className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-md bg-surface-variant/20 p-md rounded-xl border border-outline-variant/20 shadow-xs">
-        <div className="flex flex-1 max-w-md items-center gap-2 bg-white rounded-lg px-md py-sm border border-outline-variant/40 focus-within:border-primary transition-all">
-          <span className="material-symbols-outlined text-on-surface-variant text-[20px]">search</span>
-          <input 
-            type="text" 
-            placeholder="Buscar por código, nombre o cliente..." 
-            className="w-full bg-transparent border-0 outline-none text-body-md text-on-surface placeholder:text-on-surface-variant/60"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      <section className="glass-card rounded-xl p-md flex flex-wrap items-end gap-md shadow-sm">
+        <div className="flex-grow max-w-lg min-w-[240px]">
+          <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Proyecto</label>
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+            <input 
+              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none" 
+              placeholder="Buscar por código, nombre o cliente..." 
+              type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
+        <button 
+          onClick={() => setSearchTerm('')}
+          className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
+        >
+          <span className="material-symbols-outlined text-[16px]">clear_all</span>
+          <span>Limpiar</span>
+        </button>
       </section>
 
       {/* Projects List */}
