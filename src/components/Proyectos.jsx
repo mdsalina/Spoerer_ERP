@@ -479,7 +479,7 @@ export default function Proyectos({
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-body-md text-primary">
-                                  Presupuesto #{budget.title}
+                                  Presupuesto #{budget.quoteId} - {budget.title}
                                 </span>
                                 <span className="text-xs bg-secondary/10 text-secondary font-bold px-2 py-0.5 rounded-full">
                                   {budget.amount} UF
@@ -534,16 +534,16 @@ export default function Proyectos({
                                           className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
                                         />
                                       </td>
-                                      <td className="p-1.5 w-36">
-                                        <select
-                                          value={row.status || 'Por facturar'}
-                                          onChange={(e) => handleRowFieldChange(row.id, 'status', e.target.value)}
-                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm cursor-pointer font-medium"
-                                        >
-                                          <option value="Por facturar">Por facturar</option>
-                                          <option value="Factura emitida">Factura emitida</option>
-                                          <option value="Pagada">Pagada</option>
-                                        </select>
+                                      <td className="p-1.5 w-36 text-center">
+                                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                          (row.status || 'Por facturar') === 'Pagada'
+                                            ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
+                                            : (row.status || 'Por facturar') === 'Factura emitida'
+                                              ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
+                                              : 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                                        }`}>
+                                          {row.status || 'Por facturar'}
+                                        </span>
                                       </td>
                                       <td className="p-1.5 w-28">
                                         <input

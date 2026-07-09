@@ -1,360 +1,971 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { supabase } from '../utils/supabaseClient';
 
-export default function Facturacion({ invoices, onUpdateInvoiceStatus, onAddInvoice, clients }) {
+export default function Facturacion({ projects, budgets, installments, clients, onUpdateInstallment }) {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  // --- FILTERS STATE ---
+  const [temporalFilter, setTemporalFilter] = useState('Todos'); // '1_mes', '6_meses', '12_meses', 'Todos'
+  const [statusFilter, setStatusFilter] = useState('Todos'); // 'Todos', 'Por facturar', 'Factura emitida', 'Pagada'
+  const [clientFilter, setClientFilter] = useState('Todos'); // client ID or 'Todos'
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Todas');
-  
-  // Payment Registration Form State
+
+  // --- EXPANSION STATE ---
+  const [expandedProjects, setExpandedProjects] = useState({});
+
+  // --- MODALS STATE ---
+  const [isEmitModalOpen, setIsEmitModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
-  const [paymentAmount, setPaymentAmount] = useState('');
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedInstallment, setSelectedInstallment] = useState(null);
 
-  // Invoice creation form state (Optional, but great for realism!)
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [clientName, setClientName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // Calculate dynamic stats
-  const totalFacturado = invoices.reduce((sum, inv) => sum + inv.amount, 0);
-  const pagosPendientes = invoices
-    .filter(inv => inv.status === 'No Pagada' || inv.status === 'Pago Parcial')
-    .reduce((sum, inv) => sum + inv.amount, 0);
+  // --- FORM STATES ---
+  const [isSaving, setIsSaving] = useState(false);
   
-  // We simulate "critical/expired" as invoices with status 'No Pagada' that have an amount > 5000 (just for simulation)
-  const facturasVencidas = invoices
-    .filter(inv => inv.status === 'No Pagada' && inv.amount > 5000)
-    .reduce((sum, inv) => sum + inv.amount, 0);
-  
-  const countVencidas = invoices.filter(inv => inv.status === 'No Pagada' && inv.amount > 5000).length;
+  // Emit Invoice Form
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [actualInvoiceDate, setActualInvoiceDate] = useState('');
+  const [ufRate, setUfRate] = useState('');
+  const [isFetchingUf, setIsFetchingUf] = useState(false);
+  const [ufFetchError, setUfFetchError] = useState(false);
+  const [invoiceFile, setInvoiceFile] = useState(null);
+  const [emitComment, setEmitComment] = useState('');
 
-  const handleRegisterPaymentSubmit = (e) => {
-    e.preventDefault();
-    if (!selectedInvoiceId) return;
+  // Register Payment Form
+  const [actualPaymentDate, setActualPaymentDate] = useState('');
+  const [totalClpReceived, setTotalClpReceived] = useState('');
+  const [paymentFile, setPaymentFile] = useState(null);
+  const [paymentComment, setPaymentComment] = useState('');
 
-    onUpdateInvoiceStatus(selectedInvoiceId, 'Pagada');
-    setSelectedInvoiceId('');
-    setPaymentAmount('');
-    setIsPaymentModalOpen(false);
+  // --- UTILS & FORMATTERS ---
+  const formatCLP = (amount) => {
+    if (amount === null || amount === undefined || isNaN(amount)) return '-';
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: 'CLP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
   };
 
-  const handleCreateInvoiceSubmit = (e) => {
-    e.preventDefault();
-    if (!clientName || !amount) return;
-
-    const newInvoice = {
-      id: `INV-2026-${Math.floor(100 + Math.random() * 900)}`,
-      clientName: clientName,
-      amount: parseFloat(amount),
-      dueDate: dueDate.split('-').reverse().join(' '), // Format: 15 Oct, 2026
-      status: 'No Pagada'
-    };
-
-    onAddInvoice(newInvoice);
-    setClientName('');
-    setAmount('');
-    setIsInvoiceModalOpen(false);
+  const formatUF = (uf) => {
+    if (uf === null || uf === undefined || isNaN(uf)) return '0 UF';
+    return `${new Intl.NumberFormat('es-CL', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(uf)} UF`;
   };
 
-  // Filter invoices
-  const filteredInvoices = invoices.filter(inv => {
-    const matchesSearch = 
-      inv.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      inv.id.toLowerCase().includes(searchTerm.toLowerCase());
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`; // YYYY-MM-DD to DD/MM/YYYY
+  };
+
+  // --- DATE FILTER HELPER ---
+  const filterPeriod = (dateStr, period) => {
+    if (period === 'Todos') return true;
+    if (!dateStr) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const targetDate = new Date(dateStr + 'T12:00:00'); // avoid timezone shifts
+    const diffTime = targetDate - today;
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+    if (period === '1_mes') {
+      return Math.abs(diffDays) <= 30;
+    }
+    if (period === '6_meses') {
+      return Math.abs(diffDays) <= 180;
+    }
+    if (period === '12_meses') {
+      return Math.abs(diffDays) <= 365;
+    }
+    return true;
+  };
+
+  // --- SUPABASE STORAGE FILE UPLOAD HELPER ---
+  const uploadFile = async (folder, projectNumber, file) => {
+    if (!file) return '';
+    // Clean file name to remove spaces and special characters
+    const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${folder}/${projectNumber}_${Date.now()}_${cleanName}`;
     
-    const matchesStatus = 
-      statusFilter === 'Todas' || 
-      inv.status === statusFilter;
+    const { data, error } = await supabase.storage
+      .from('budgets')
+      .upload(path, file, {
+        upsert: true
+      });
       
-    return matchesSearch && matchesStatus;
-  });
+    if (error) throw error;
+    
+    const { data: { publicUrl } } = supabase.storage
+      .from('budgets')
+      .getPublicUrl(path);
+      
+    return publicUrl;
+  };
+
+  // --- UF AUTO-FETCHING ---
+  const fetchTodayUf = async () => {
+    setIsFetchingUf(true);
+    setUfFetchError(false);
+    try {
+      const res = await fetch('https://mindicador.cl/api/uf');
+      if (!res.ok) throw new Error('Error al conectar con el servidor de UF');
+      const data = await res.json();
+      if (data.serie && data.serie.length > 0) {
+        const rate = data.serie[0].valor;
+        setUfRate(rate.toString());
+      } else {
+        throw new Error('Formato de datos no esperado');
+      }
+    } catch (err) {
+      console.error("Error fetching UF:", err);
+      setUfFetchError(true);
+    } finally {
+      setIsFetchingUf(false);
+    }
+  };
+
+  // Fetch UF rate automatically when Emit Invoice Modal is opened
+  useEffect(() => {
+    if (isEmitModalOpen && selectedInstallment) {
+      fetchTodayUf();
+    }
+  }, [isEmitModalOpen, selectedInstallment]);
+
+  // --- DYNAMIC CALCULATIONS FOR EMIT MODAL ---
+  const plannedUf = selectedInstallment ? parseFloat(selectedInstallment.uf) || 0 : 0;
+  const parsedUfRate = parseFloat(ufRate) || 0;
+  const calculatedNet = Math.round(plannedUf * parsedUfRate);
+  const calculatedTax = Math.round(calculatedNet * 0.19);
+  const calculatedTotal = calculatedNet + calculatedTax;
+
+  // --- DYNAMIC KPIs (Adjust to selected temporal filter) ---
+  const stats = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    let totalPorFacturarUf = 0;
+    let totalFacturadoPendienteClp = 0;
+    let totalRecaudadoClp = 0;
+    let totalVencidoUf = 0;
+
+    installments.forEach(inst => {
+      // KPI filter: adjust to the selected period filter
+      if (!filterPeriod(inst.date, temporalFilter)) return;
+
+      const isUnpaid = inst.status === 'Por facturar' || inst.status === 'Factura emitida';
+      const isExpired = inst.date && inst.date < todayStr;
+
+      if (inst.status === 'Por facturar') {
+        totalPorFacturarUf += parseFloat(inst.uf) || 0;
+      } else if (inst.status === 'Factura emitida') {
+        totalFacturadoPendienteClp += parseFloat(inst.total_clp) || 0;
+      } else if (inst.status === 'Pagada') {
+        totalRecaudadoClp += parseFloat(inst.total_clp) || 0;
+      }
+
+      if (isUnpaid && isExpired) {
+        totalVencidoUf += parseFloat(inst.uf) || 0;
+      }
+    });
+
+    return {
+      totalPorFacturarUf,
+      totalFacturadoPendienteClp,
+      totalRecaudadoClp,
+      totalVencidoUf
+    };
+  }, [installments, temporalFilter]);
+
+  // --- FILTERED INSTALLMENTS ---
+  const filteredInstallments = useMemo(() => {
+    return installments.filter(inst => {
+      // 1. Temporal Filter
+      if (!filterPeriod(inst.date, temporalFilter)) return false;
+
+      // 2. Status Filter
+      if (statusFilter === 'Vencida') {
+        const isOverdue = inst.status === 'Por facturar' && inst.date && inst.date < todayStr;
+        if (!isOverdue) return false;
+      } else if (statusFilter !== 'Todos' && inst.status !== statusFilter) {
+        return false;
+      }
+
+      // Find associated project to retrieve client ID
+      const project = projects.find(p => p.id === inst.project_id);
+      const clientId = project?.clientId || null;
+
+      // 3. Client Filter
+      if (clientFilter !== 'Todos' && clientId !== clientFilter) return false;
+
+      // 4. Text Search
+      if (searchTerm.trim() !== '') {
+        const term = searchTerm.toLowerCase();
+        
+        const projectCode = project?.projectNumber?.toLowerCase() || '';
+        const projectName = project?.rawProjectName?.toLowerCase() || '';
+        
+        const client = clients.find(c => c.id === clientId);
+        const clientCompany = client?.company?.toLowerCase() || '';
+        const clientName = client?.name?.toLowerCase() || '';
+        
+        const invNum = inst.invoiceNumber?.toLowerCase() || '';
+
+        const matchesProject = projectCode.includes(term) || projectName.includes(term);
+        const matchesClient = clientCompany.includes(term) || clientName.includes(term);
+        const matchesInvoice = invNum.includes(term);
+
+        if (!matchesProject && !matchesClient && !matchesInvoice) return false;
+      }
+
+      return true;
+    });
+  }, [installments, projects, clients, temporalFilter, statusFilter, clientFilter, searchTerm, todayStr]);
+
+  // --- HIERARCHICAL DATA GROUPING (Project > Budget > Installments) ---
+  const groupedData = useMemo(() => {
+    const groups = {}; // projectId -> budgetId -> Array of installments
+
+    filteredInstallments.forEach(inst => {
+      const pId = inst.project_id;
+      const bId = inst.origin_budget_id;
+      if (!pId || !bId) return;
+
+      if (!groups[pId]) {
+        groups[pId] = {};
+      }
+      if (!groups[pId][bId]) {
+        groups[pId][bId] = [];
+      }
+      groups[pId][bId].push(inst);
+    });
+
+    const result = [];
+
+    Object.keys(groups).forEach(pId => {
+      const project = projects.find(p => p.id === pId);
+      if (!project) return;
+
+      const budgetGroups = groups[pId];
+      const projectBudgets = [];
+      let projectPlannedTotalUf = 0;
+
+      Object.keys(budgetGroups).forEach(bId => {
+        const budget = budgets.find(b => b.id === bId);
+        // Display Quote Number + Title
+        const budgetTitle = budget 
+          ? `${budget.quoteId} - ${budget.title}` 
+          : `Presupuesto Ref: ${bId.substring(0, 8)}`;
+        const budgetAmount = budget ? budget.amount : 0;
+        const budgetInstallments = budgetGroups[bId];
+
+        // Sort installments by numQuota or date
+        budgetInstallments.sort((a, b) => (a.numQuota || 0) - (b.numQuota || 0));
+
+        const budgetTotalUf = budgetInstallments.reduce((sum, inst) => sum + (inst.uf || 0), 0);
+        projectPlannedTotalUf += budgetTotalUf;
+
+        projectBudgets.push({
+          id: bId,
+          budget,
+          title: budgetTitle,
+          amount: budgetAmount,
+          installments: budgetInstallments
+        });
+      });
+
+      projectBudgets.sort((a, b) => a.title.localeCompare(b.title));
+
+      result.push({
+        id: pId,
+        project,
+        plannedTotalUf: projectPlannedTotalUf,
+        budgets: projectBudgets
+      });
+    });
+
+    result.sort((a, b) => (a.project?.projectNumber || '').localeCompare(b.project?.projectNumber || ''));
+
+    return result;
+  }, [filteredInstallments, projects, budgets]);
+
+  // --- COLLAPSE / EXPAND ACTIONS ---
+  const toggleProject = (pId) => {
+    setExpandedProjects(prev => ({
+      ...prev,
+      [pId]: !prev[pId]
+    }));
+  };
+
+  const expandAll = () => {
+    const expansions = {};
+    groupedData.forEach(item => {
+      expansions[item.id] = true;
+    });
+    setExpandedProjects(expansions);
+  };
+
+  const collapseAll = () => {
+    setExpandedProjects({});
+  };
+
+  // --- MODAL TRIGGERS ---
+  const openEmitModal = (installment) => {
+    setSelectedInstallment(installment);
+    setInvoiceNumber(installment.invoiceNumber || '');
+    setActualInvoiceDate(installment.actualInvoiceDate || new Date().toISOString().split('T')[0]);
+    setUfRate('');
+    setInvoiceFile(null);
+    setEmitComment(installment.comment || '');
+    setIsEmitModalOpen(true);
+  };
+
+  const openPaymentModal = (installment) => {
+    setSelectedInstallment(installment);
+    setActualPaymentDate(installment.actualPaymentDate || new Date().toISOString().split('T')[0]);
+    setTotalClpReceived(installment.total_clp ? installment.total_clp.toString() : '');
+    setPaymentFile(null);
+    setPaymentComment(installment.comment || '');
+    setIsPaymentModalOpen(true);
+  };
+
+  const openDetailsModal = (installment) => {
+    setSelectedInstallment(installment);
+    setIsDetailsModalOpen(true);
+  };
+
+  // --- SAVE ACTIONS ---
+  const handleSaveEmit = async (e) => {
+    e.preventDefault();
+    if (!invoiceNumber.trim()) {
+      alert("Por favor, ingrese el número de factura.");
+      return;
+    }
+    if (!ufRate || isNaN(parseFloat(ufRate))) {
+      alert("Por favor, ingrese un valor de UF válido.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const project = projects.find(p => p.id === selectedInstallment.project_id);
+      const pNumber = project ? project.projectNumber : 'SIN_PROYECTO';
+      
+      let fileUrl = selectedInstallment.invoiceFileUrl || '';
+      if (invoiceFile) {
+        fileUrl = await uploadFile('facturas', pNumber, invoiceFile);
+      }
+
+      const updates = {
+        status: 'Factura emitida',
+        invoiceNumber: invoiceNumber.trim(),
+        actualInvoiceDate,
+        net_clp: calculatedNet,
+        tax_clp: calculatedTax,
+        total_clp: calculatedTotal,
+        invoiceFileUrl: fileUrl,
+        comment: emitComment.trim()
+      };
+      
+      await onUpdateInstallment(selectedInstallment.id, updates);
+      setIsEmitModalOpen(false);
+    } catch (err) {
+      console.error("Error al emitir factura:", err);
+      alert("Error al emitir la factura: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSavePayment = async (e) => {
+    e.preventDefault();
+    if (!totalClpReceived || isNaN(parseFloat(totalClpReceived))) {
+      alert("Por favor, ingrese un monto en pesos válido.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const project = projects.find(p => p.id === selectedInstallment.project_id);
+      const pNumber = project ? project.projectNumber : 'SIN_PROYECTO';
+
+      let fileUrl = selectedInstallment.paymentBackupUrl || '';
+      if (paymentFile) {
+        fileUrl = await uploadFile('respaldos_pagos', pNumber, paymentFile);
+      }
+
+      const updates = {
+        status: 'Pagada',
+        actualPaymentDate,
+        total_clp: parseFloat(totalClpReceived),
+        paymentBackupUrl: fileUrl,
+        comment: paymentComment.trim()
+      };
+      await onUpdateInstallment(selectedInstallment.id, updates);
+      setIsPaymentModalOpen(false);
+    } catch (err) {
+      console.error("Error al registrar pago:", err);
+      alert("Error al registrar el pago: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-lg animate-fade-in text-left">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <h2 className="font-display-lg text-display-lg text-primary font-bold">Gestión de Facturación</h2>
-          <p className="text-on-surface-variant font-body-md mt-1">Supervisión y control de transacciones financieras</p>
+          <h2 className="font-display-lg text-display-lg text-primary font-bold">Centro de Cobranzas</h2>
+          <p className="text-on-surface-variant font-body-md mt-1">Gestión de cuotas de facturación y conciliación de pagos</p>
         </div>
         <div className="flex gap-sm">
-          <button className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-bold rounded-lg transition-all active:scale-95">
-            <span className="material-symbols-outlined text-[20px]">picture_as_pdf</span>
-            <span className="font-label-md text-label-md">Exportar PDF</span>
+          <button 
+            onClick={expandAll}
+            className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-semibold rounded-lg transition-all active:scale-95 text-xs"
+          >
+            <span className="material-symbols-outlined text-[18px]">unfold_more</span>
+            <span>Expandir Todo</span>
           </button>
           <button 
-            onClick={() => setIsInvoiceModalOpen(true)}
-            className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-bold rounded-lg transition-all active:scale-95"
+            onClick={collapseAll}
+            className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-semibold rounded-lg transition-all active:scale-95 text-xs"
           >
-            <span className="material-symbols-outlined text-[20px]">add</span>
-            <span className="font-label-md text-label-md">Nueva Factura</span>
-          </button>
-          <button 
-            onClick={() => setIsPaymentModalOpen(true)}
-            className="flex items-center gap-xs px-md py-sm bg-secondary hover:bg-secondary/90 text-white font-bold rounded-lg transition-all shadow-sm active:scale-95"
-          >
-            <span className="material-symbols-outlined text-[20px]">add_card</span>
-            <span className="font-label-md text-label-md">Registrar Pago</span>
+            <span className="material-symbols-outlined text-[18px]">unfold_less</span>
+            <span>Colapsar Todo</span>
           </button>
         </div>
       </div>
 
-      {/* Summary Cards Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-lg">
-        {/* Total Facturado */}
+      {/* SECTION A: Dashboard de KPIs Financieros */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-lg">
+        {/* KPI 1: Total por Facturar (UF) */}
         <div className="bg-white p-lg border border-outline-variant rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start">
             <div>
-              <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Total Facturado (Histórico)</p>
-              <h3 className="font-display-lg text-display-lg text-primary mt-sm">
-                ${totalFacturado.toLocaleString('es-CL', { minimumFractionDigits: 2 })}
+              <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Por Facturar (Planificado)</p>
+              <h3 className="font-display-md text-display-md text-primary mt-sm font-bold">
+                {formatUF(stats.totalPorFacturarUf)}
               </h3>
             </div>
-            <div className="bg-secondary-container/30 p-2 rounded-lg">
-              <span className="material-symbols-outlined text-secondary">payments</span>
+            <div className="bg-slate-100 p-2 rounded-lg text-slate-500">
+              <span className="material-symbols-outlined text-[24px]">calendar_today</span>
             </div>
           </div>
-          <div className="mt-md flex items-center gap-sm">
-            <span className="text-secondary font-bold text-sm flex items-center">
-              <span className="material-symbols-outlined text-[18px]">trending_up</span>
-              +12.5%
-            </span>
-            <span className="text-on-surface-variant font-body-sm text-body-sm">vs mes anterior</span>
+          <div className="mt-md text-[11px] text-on-surface-variant">
+            Suma total estimada en UF para el período
           </div>
         </div>
 
-        {/* Pagos Pendientes */}
+        {/* KPI 2: Total Facturado Pendiente (CLP) */}
         <div className="bg-white p-lg border border-outline-variant rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start">
             <div>
-              <p className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Pagos Pendientes</p>
-              <h3 className="font-display-lg text-display-lg text-primary mt-sm">
-                ${pagosPendientes.toLocaleString('es-CL', { minimumFractionDigits: 2 })}
+              <p className="font-label-md text-label-md text-amber-700 uppercase tracking-wider font-semibold">Facturado Pendiente</p>
+              <h3 className="font-display-md text-display-md text-amber-800 mt-sm font-bold">
+                {formatCLP(stats.totalFacturadoPendienteClp)}
               </h3>
             </div>
-            <div className="bg-surface-container-high p-2 rounded-lg">
-              <span className="material-symbols-outlined text-primary">pending_actions</span>
+            <div className="bg-amber-50 p-2 rounded-lg text-amber-600 border border-amber-100">
+              <span className="material-symbols-outlined text-[24px]">pending_actions</span>
             </div>
           </div>
-          <div className="mt-md">
-            <div className="w-full bg-surface-container-low h-2 rounded-full overflow-hidden">
-              <div 
-                className="bg-secondary h-full rounded-full transition-all" 
-                style={{ width: `${totalFacturado > 0 ? ((totalFacturado - pagosPendientes) / totalFacturado) * 100 : 0}%` }}
-              ></div>
-            </div>
-            <p className="text-body-sm font-body-sm mt-sm text-on-surface-variant">
-              {totalFacturado > 0 ? Math.round(((totalFacturado - pagosPendientes) / totalFacturado) * 100) : 0}% de la facturación cobrada
-            </p>
+          <div className="mt-md text-[11px] text-amber-700">
+            Con factura emitida para el período
           </div>
         </div>
 
-        {/* Facturas Vencidas (High Alert) */}
+        {/* KPI 3: Total Recaudado (CLP) */}
+        <div className="bg-white p-lg border border-outline-variant rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="font-label-md text-label-md text-emerald-700 uppercase tracking-wider font-semibold">Total Recaudado</p>
+              <h3 className="font-display-md text-display-md text-emerald-800 mt-sm font-bold">
+                {formatCLP(stats.totalRecaudadoClp)}
+              </h3>
+            </div>
+            <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600 border border-emerald-100">
+              <span className="material-symbols-outlined text-[24px]">payments</span>
+            </div>
+          </div>
+          <div className="mt-md text-[11px] text-emerald-700">
+            Pagos recibidos en el período
+          </div>
+        </div>
+
+        {/* KPI 4: Vencimientos Atrasados (UF) */}
         <div className="bg-white p-lg border border-error/20 border-l-4 border-l-error rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex justify-between items-start">
             <div>
-              <p className="font-label-md text-label-md text-error uppercase tracking-wider font-bold">Vencidas Críticas</p>
-              <h3 className="font-display-lg text-display-lg text-error mt-sm">
-                ${facturasVencidas.toLocaleString('es-CL', { minimumFractionDigits: 2 })}
+              <p className="font-label-md text-label-md text-error uppercase tracking-wider font-bold">Vencido Atrasado</p>
+              <h3 className="font-display-md text-display-md text-error mt-sm font-bold">
+                {formatUF(stats.totalVencidoUf)}
               </h3>
             </div>
-            <div className="bg-error-container p-2 rounded-lg">
-              <span className="material-symbols-outlined text-error" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+            <div className="bg-error-container p-2 rounded-lg text-error">
+              <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
             </div>
           </div>
-          <div className="mt-md flex items-center gap-sm text-error">
-            <span className="font-bold text-sm">{countVencidas} facturas vencidas críticas</span>
+          <div className="mt-md text-[11px] text-error font-semibold">
+            Vencidos acumulados en el período
           </div>
         </div>
       </div>
 
-      {/* Central Invoices Table Card */}
-      <div className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
-        <div className="px-lg py-md border-b border-outline-variant bg-surface-bright flex flex-col sm:flex-row justify-between items-center gap-sm">
-          <div className="flex items-center gap-md w-full sm:max-w-xs">
-            <div className="relative w-full">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-              <input 
-                className="w-full pl-10 pr-4 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none" 
-                placeholder="Buscar por ID o Cliente..." 
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+      {/* SECTION B: Barra de Filtros y Búsqueda */}
+      <div className="bg-surface-bright border border-outline-variant rounded-xl p-lg shadow-sm flex flex-col lg:flex-row items-center gap-md justify-between">
+        <div className="flex flex-wrap items-center gap-md w-full lg:w-auto">
+          {/* Temporal Filter */}
+          <div className="flex flex-col gap-xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Período de Vencimiento</span>
+            <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant">
+              {[
+                { value: '1_mes', label: '1 Mes' },
+                { value: '6_meses', label: '6 Meses' },
+                { value: '12_meses', label: '12 Meses' },
+                { value: 'Todos', label: 'Histórico' }
+              ].map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setTemporalFilter(p.value)}
+                  className={`px-sm py-1.5 rounded text-[11px] font-semibold transition-all ${
+                    temporalFilter === p.value 
+                      ? 'bg-primary text-white shadow-sm' 
+                      : 'text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
           </div>
-          <div className="flex gap-sm">
-            {['Todas', 'Pagada', 'Pago Parcial', 'No Pagada'].map((status) => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={`px-sm py-1 rounded text-xs font-semibold ${
-                  statusFilter === status 
-                    ? 'bg-primary text-white' 
-                    : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'
-                }`}
+
+          {/* Status Filter */}
+          <div className="flex flex-col gap-xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Estado Cuota</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-md py-2 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none h-[38px] font-semibold text-primary"
+            >
+              <option value="Todos">Todos los estados</option>
+              <option value="Por facturar">Por facturar</option>
+              <option value="Vencida">Vencidas</option>
+              <option value="Factura emitida">Factura emitida</option>
+              <option value="Pagada">Pagada</option>
+            </select>
+          </div>
+
+          {/* Client Filter */}
+          <div className="flex flex-col gap-xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Cliente</span>
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              className="px-md py-2 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none h-[38px] max-w-[220px] font-semibold text-primary"
+            >
+              <option value="Todos">Todos los clientes</option>
+              {clients.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.company || c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Text Search */}
+        <div className="flex flex-col gap-xs w-full lg:w-72">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Búsqueda General</span>
+          <div className="relative w-full">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+            <input 
+              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none h-[38px]" 
+              placeholder="Factura, Proyecto o Cliente..." 
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION C: Lista de Facturación Agrupada (Jerárquica) */}
+      <div className="space-y-md">
+        {groupedData.length > 0 ? (
+          groupedData.map(({ id: pId, project, plannedTotalUf, budgets: projectBudgets }) => {
+            const isExpanded = expandedProjects[pId];
+            return (
+              <div 
+                key={pId} 
+                className="bg-white border border-outline-variant rounded-xl overflow-hidden hover:shadow-sm transition-shadow text-left"
               >
-                {status}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[700px]">
-            <thead>
-              <tr className="bg-surface-bright">
-                <th className="px-lg py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant">ID FACTURA</th>
-                <th className="px-lg py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant">CLIENTE</th>
-                <th className="px-lg py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant">MONTO TOTAL</th>
-                <th className="px-lg py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant">VENCIMIENTO</th>
-                <th className="px-lg py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant text-center">ESTADO</th>
-                <th className="px-lg py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant text-right">ACCIONES</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/10">
-              {filteredInvoices.length > 0 ? (
-                filteredInvoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-surface-container-lowest transition-colors cursor-pointer group">
-                    <td className="px-lg py-md font-body-md text-body-md text-primary font-semibold">{inv.id}</td>
-                    <td className="px-lg py-md font-body-md text-body-md">{inv.clientName}</td>
-                    <td className="px-lg py-md font-body-md text-body-md font-bold">
-                      ${inv.amount.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className={`px-lg py-md font-body-md text-body-md ${
-                      inv.status === 'No Pagada' && inv.amount > 5000 ? 'text-error font-semibold' : 'text-on-surface-variant'
-                    }`}>{inv.dueDate}</td>
-                    <td className="px-lg py-md text-center">
-                      <span className={`inline-flex items-center px-sm py-xs rounded-full text-[11px] font-bold uppercase ${
-                        inv.status === 'Pagada'
-                          ? 'bg-secondary-container/30 text-on-secondary-container'
-                          : inv.status === 'Pago Parcial'
-                          ? 'bg-tertiary-fixed text-on-tertiary-fixed-variant'
-                          : 'bg-error-container text-on-error-container'
-                      }`}>
-                        {inv.status}
+                {/* Nivel 1: Tarjeta de Proyecto */}
+                <div 
+                  onClick={() => toggleProject(pId)}
+                  className="px-lg py-md bg-surface-bright flex flex-col sm:flex-row justify-between items-start sm:items-center gap-md border-b border-outline-variant/30 cursor-pointer hover:bg-surface-container-lowest transition-colors"
+                >
+                  <div className="space-y-xs">
+                    <div className="flex items-center gap-xs">
+                      <span className="material-symbols-outlined text-outline text-[18px] select-none">
+                        {isExpanded ? 'expand_more' : 'chevron_right'}
                       </span>
-                    </td>
-                    <td className="px-lg py-md text-right md:opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="text-outline hover:text-primary">
-                        <span className="material-symbols-outlined">more_vert</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-on-surface-variant italic">
-                    No se encontraron facturas.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-lg py-sm bg-surface-bright border-t border-outline-variant flex justify-between items-center text-label-md text-on-surface-variant">
-          <span>Mostrando {filteredInvoices.length} de {invoices.length} facturas</span>
-          <div className="flex gap-xs">
-            <button className="px-2 py-1 rounded hover:bg-surface-container-low transition-colors" disabled>
-              <span className="material-symbols-outlined text-[18px]">chevron_left</span>
-            </button>
-            <button className="px-3 py-1 rounded bg-secondary text-white font-bold">1</button>
-            <button className="px-2 py-1 rounded hover:bg-surface-container-low transition-colors">
-              <span className="material-symbols-outlined text-[18px]">chevron_right</span>
-            </button>
+                      <h4 className="font-title-md text-title-md text-primary font-bold">
+                        {project.projectNumber} - {project.rawProjectName}
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-sm pl-6 text-on-surface-variant text-body-sm font-medium">
+                      <span className="material-symbols-outlined text-[16px] text-outline">corporate_fare</span>
+                      <span>{project.cliente || 'Cliente no definido'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-lg self-end sm:self-auto pl-6 sm:pl-0">
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-outline-variant block uppercase tracking-wider">Total UF Filtrado</span>
+                      <span className="text-body-md font-bold text-primary">{formatUF(plannedTotalUf)}</span>
+                    </div>
+                    <div className="p-1 bg-surface-container-high rounded-full text-outline hover:text-primary transition-colors">
+                      <span className="material-symbols-outlined text-[20px]">
+                        {isExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nivel 2: Presupuestos del Proyecto */}
+                {isExpanded && (
+                  <div className="p-lg bg-surface-container-lowest divide-y divide-outline-variant/20 space-y-lg">
+                    {projectBudgets.map(({ id: bId, budget, title, amount, installments: budgetInstallments }) => {
+                      return (
+                        <div key={bId} className="pt-md first:pt-0 space-y-sm">
+                          {/* Presupuesto Header */}
+                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs border-b border-outline-variant/10 pb-2">
+                            <span className="text-body-md text-primary font-bold flex items-center gap-xs">
+                              <span className="material-symbols-outlined text-[18px] text-outline">description</span>
+                              {title}
+                            </span>
+                            <span className="text-body-sm text-on-surface-variant">
+                              Monto Presupuestado: <strong className="font-semibold">{formatCLP(amount)}</strong>
+                            </span>
+                          </div>
+
+                          {/* Nivel 3: Tabla de Cuotas */}
+                          <div className="overflow-x-auto rounded-lg border border-outline-variant/30">
+                            <table className="w-full text-left border-collapse min-w-[850px]">
+                              <thead>
+                                <tr className="bg-surface-container-low">
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30 w-24">Nº Cuota</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30">Fecha Planificada</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30 text-right">Monto (UF)</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30 text-center">Estado</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30">Folio Factura</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30 text-right">Detalle Pesos (CLP)</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30">Fecha Pago</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30 text-center">Respaldos</th>
+                                  <th className="px-md py-sm font-label-md text-label-md text-on-surface-variant border-b border-outline-variant/30 text-right">Acciones</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-outline-variant/10 bg-white">
+                                {budgetInstallments.map((inst) => {
+                                  const totalQuotas = installments.filter(i => i.origin_budget_id === bId).length;
+                                  const isOverdue = inst.status === 'Por facturar' && inst.date && inst.date < todayStr;
+                                  return (
+                                    <tr key={inst.id} className="hover:bg-surface-container-lowest transition-colors text-body-sm">
+                                      <td className={`px-md py-md font-semibold ${isOverdue ? 'text-red-600' : 'text-primary'}`}>
+                                        {inst.numQuota ? `${inst.numQuota.toString().padStart(2, '0')}/${totalQuotas.toString().padStart(2, '0')}` : '-'}
+                                      </td>
+                                      <td className={`px-md py-md ${isOverdue ? 'text-red-600 font-semibold' : 'text-on-surface-variant'}`}>
+                                        {formatDate(inst.date)}
+                                      </td>
+                                      <td className={`px-md py-md text-right font-semibold ${isOverdue ? 'text-red-600' : 'text-primary'}`}>
+                                        {formatUF(inst.uf)}
+                                      </td>
+                                      <td className="px-md py-md text-center">
+                                        <span className={`inline-flex items-center px-sm py-xs rounded-full text-[10px] font-bold uppercase border ${
+                                          inst.status === 'Pagada'
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : inst.status === 'Factura emitida'
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                                        }`}>
+                                          {inst.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-md py-md font-medium text-on-surface-variant">
+                                        {inst.invoiceNumber || '-'}
+                                      </td>
+                                      <td className="px-md py-md text-right">
+                                        {inst.status === 'Por facturar' ? (
+                                          <span className="text-outline">-</span>
+                                        ) : (
+                                          <div className="relative group/tooltip inline-block">
+                                            <span className="font-semibold underline decoration-dotted text-primary cursor-help">
+                                              {formatCLP(inst.total_clp)}
+                                            </span>
+                                            {/* Tooltip con desglose */}
+                                            <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tooltip:block bg-slate-900 text-white text-xs rounded-lg py-2 px-3 shadow-xl z-50 whitespace-nowrap text-left border border-slate-800">
+                                              <div className="font-semibold text-slate-400 border-b border-slate-800 pb-1 mb-1">Cálculo de Pesos</div>
+                                              <p className="flex justify-between gap-4"><span>Neto:</span> <span className="font-mono">{formatCLP(inst.net_clp)}</span></p>
+                                              <p className="flex justify-between gap-4"><span>IVA (19%):</span> <span className="font-mono">{formatCLP(inst.tax_clp)}</span></p>
+                                              <p className="flex justify-between gap-4 border-t border-slate-800 pt-1 mt-1 font-bold text-secondary-fixed-dim"><span>Total:</span> <span className="font-mono">{formatCLP(inst.total_clp)}</span></p>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="px-md py-md text-on-surface-variant">
+                                        {formatDate(inst.actualPaymentDate)}
+                                      </td>
+                                      <td className="px-md py-md text-center">
+                                        <div className="flex justify-center items-center gap-xs">
+                                          {inst.invoiceFileUrl ? (
+                                            <a 
+                                              href={inst.invoiceFileUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer" 
+                                              className="inline-flex items-center text-primary hover:text-primary-container p-1 bg-surface-container-high rounded transition-colors" 
+                                              title="Descargar Factura (PDF)"
+                                            >
+                                              <span className="material-symbols-outlined text-[16px]">receipt_long</span>
+                                            </a>
+                                          ) : null}
+                                          {inst.paymentBackupUrl ? (
+                                            <a 
+                                              href={inst.paymentBackupUrl} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer" 
+                                              className="inline-flex items-center text-secondary hover:text-secondary-fixed p-1 bg-surface-container-high rounded transition-colors" 
+                                              title="Ver Comprobante de Pago"
+                                            >
+                                              <span className="material-symbols-outlined text-[16px]">receipt</span>
+                                            </a>
+                                          ) : null}
+                                          {!inst.invoiceFileUrl && !inst.paymentBackupUrl ? (
+                                            <span className="text-outline">-</span>
+                                          ) : null}
+                                        </div>
+                                      </td>
+                                      <td className="px-md py-md text-right">
+                                        {inst.status === 'Por facturar' && (
+                                          <button
+                                            onClick={() => openEmitModal(inst)}
+                                            className="inline-flex items-center gap-xs px-2 py-1 bg-primary text-white rounded hover:bg-primary-container font-semibold transition-all active:scale-95 text-[11px]"
+                                          >
+                                            <span className="material-symbols-outlined text-[14px]">send</span>
+                                            <span>Emitir Factura</span>
+                                          </button>
+                                        )}
+                                        {inst.status === 'Factura emitida' && (
+                                          <button
+                                            onClick={() => openPaymentModal(inst)}
+                                            className="inline-flex items-center gap-xs px-2 py-1 bg-secondary text-white rounded hover:bg-secondary/90 font-semibold transition-all active:scale-95 text-[11px]"
+                                          >
+                                            <span className="material-symbols-outlined text-[14px]">price_check</span>
+                                            <span>Registrar Pago</span>
+                                          </button>
+                                        )}
+                                        {inst.status === 'Pagada' && (
+                                          <button
+                                            onClick={() => openDetailsModal(inst)}
+                                            className="inline-flex items-center gap-xs px-2 py-1 border border-outline text-on-surface-variant rounded hover:bg-surface-container-low font-semibold transition-all active:scale-95 text-[11px]"
+                                          >
+                                            <span className="material-symbols-outlined text-[14px]">visibility</span>
+                                            <span>Detalles</span>
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="bg-white border border-outline-variant rounded-xl p-12 text-center text-on-surface-variant italic">
+            No se encontraron cuotas de facturación para el filtro seleccionado.
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Footer Activity / Quick Stats */}
-      <div className="flex flex-col lg:flex-row gap-lg">
-        <div className="flex-1 bg-white p-lg border border-outline-variant rounded-xl shadow-sm">
-          <div className="flex justify-between items-center mb-md">
-            <h5 className="font-title-lg text-title-lg text-primary font-semibold">Flujo Mensual</h5>
-            <span className="text-on-surface-variant font-label-md text-label-md">Últimos 30 días</span>
-          </div>
-          <div className="h-32 flex items-end justify-between gap-2 px-md">
-            <div className="bg-surface-container-high w-full rounded-t" style={{ height: '40%' }}></div>
-            <div className="bg-surface-container-high w-full rounded-t" style={{ height: '65%' }}></div>
-            <div className="bg-secondary w-full rounded-t" style={{ height: '85%' }}></div>
-            <div className="bg-surface-container-high w-full rounded-t" style={{ height: '55%' }}></div>
-            <div className="bg-surface-container-high w-full rounded-t" style={{ height: '70%' }}></div>
-            <div className="bg-secondary w-full rounded-t" style={{ height: '95%' }}></div>
-            <div className="bg-surface-container-high w-full rounded-t" style={{ height: '45%' }}></div>
-          </div>
-          <div className="flex justify-between mt-sm text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">
-            <span>S1</span><span>S2</span><span className="text-secondary font-bold">S3</span><span>S4</span><span>S5</span><span className="text-secondary font-bold">S6</span><span>S7</span>
-          </div>
-        </div>
-        <div className="lg:w-1/3 bg-primary text-white p-lg border border-outline-variant rounded-xl shadow-lg relative overflow-hidden flex flex-col justify-between">
-          <div className="relative z-10 text-left">
-            <h5 className="font-title-lg text-title-lg mb-sm font-semibold">Asistente de Conciliación</h5>
-            <p className="font-body-sm text-body-sm opacity-80 mb-lg">Tienes 24 transacciones bancarias listas para ser vinculadas con facturas pendientes.</p>
-          </div>
-          <button className="w-full py-sm bg-secondary-fixed text-on-secondary-fixed font-bold rounded-lg hover:bg-secondary-fixed-dim transition-all relative z-10 active:scale-95">
-            Comenzar ahora
-          </button>
-          <div className="absolute -right-10 -bottom-10 opacity-10">
-            <span className="material-symbols-outlined text-[160px]">account_balance_wallet</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal: Registrar Pago */}
-      {isPaymentModalOpen && (
+      {/* --- MODAL A: Emitir Factura --- */}
+      {isEmitModalOpen && selectedInstallment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl border border-outline-variant shadow-lg max-w-md w-full overflow-hidden animate-scale-up">
+          <div className="bg-white rounded-xl border border-outline-variant shadow-lg max-w-md w-full overflow-hidden animate-scale-up text-left">
             <div className="bg-primary text-white p-lg flex justify-between items-center">
               <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
-                <span className="material-symbols-outlined">add_card</span>
-                Registrar Pago de Factura
+                <span className="material-symbols-outlined">send</span>
+                Emitir Factura
               </h3>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="text-white hover:text-secondary-fixed transition-colors">
+              <button 
+                onClick={() => setIsEmitModalOpen(false)} 
+                className="text-white hover:text-secondary-fixed transition-colors"
+                disabled={isSaving}
+              >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleRegisterPaymentSubmit} className="p-lg flex flex-col gap-md text-left">
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Factura a Pagar</label>
-                <select 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none"
-                  value={selectedInvoiceId}
-                  onChange={(e) => {
-                    setSelectedInvoiceId(e.target.value);
-                    const inv = invoices.find(i => i.id === e.target.value);
-                    if (inv) setPaymentAmount(inv.amount);
-                  }}
-                  required
-                >
-                  <option value="">Seleccione una factura pendiente...</option>
-                  {invoices.filter(i => i.status !== 'Pagada').map(i => (
-                    <option key={i.id} value={i.id}>{i.id} - {i.clientName} (${i.amount})</option>
-                  ))}
-                </select>
+            
+            <form onSubmit={handleSaveEmit} className="p-lg flex flex-col gap-md">
+              <div className="p-sm bg-surface-container-low border border-outline-variant rounded-lg text-xs space-y-1">
+                <p className="text-on-surface-variant">
+                  <strong>Cuota Nº:</strong> {selectedInstallment.numQuota}
+                </p>
+                <p className="text-on-surface-variant">
+                  <strong>Monto Pactado:</strong> {formatUF(selectedInstallment.uf)}
+                </p>
               </div>
+
+              {/* Folio Factura */}
               <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Monto del Pago</label>
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Número de Factura (Folio)</label>
                 <input 
-                  type="number"
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none"
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(e.target.value)}
-                  placeholder="0.00"
+                  type="text"
+                  className="w-full px-md py-2.5 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none font-semibold text-primary"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Ej: 1482"
                   required
+                  disabled={isSaving}
                 />
               </div>
+
+              {/* Fecha Emisión */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Fecha de Emisión Real</label>
+                <input 
+                  type="date"
+                  className="w-full px-md py-2.5 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none text-primary"
+                  value={actualInvoiceDate}
+                  onChange={(e) => setActualInvoiceDate(e.target.value)}
+                  required
+                  disabled={isSaving}
+                />
+              </div>
+
+              {/* Valor UF del dia (Fetch proposal) */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Valor de la UF del día ($)</label>
+                <div className="relative">
+                  <input 
+                    type="number"
+                    className="w-full pl-3 pr-10 py-2.5 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none font-semibold text-primary"
+                    value={ufRate}
+                    onChange={(e) => setUfRate(e.target.value)}
+                    placeholder="Ej: 38250"
+                    required
+                    disabled={isSaving}
+                  />
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-xs">
+                    {isFetchingUf ? (
+                      <span className="animate-spin text-outline-variant text-[18px] material-symbols-outlined">sync</span>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={fetchTodayUf}
+                        className="text-outline hover:text-primary transition-colors"
+                        title="Recargar UF del día"
+                        disabled={isSaving}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">sync</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {ufFetchError ? (
+                  <p className="text-[10px] text-amber-600">No se pudo cargar la UF automáticamente. Ingrésela manualmente.</p>
+                ) : (
+                  !isFetchingUf && ufRate && (
+                    <p className="text-[10px] text-secondary font-medium">UF cargada automáticamente para hoy</p>
+                  )
+                )}
+              </div>
+
+              {/* Reactive calculated fields */}
+              {parsedUfRate > 0 && (
+                <div className="bg-surface-container-high border border-outline-variant p-md rounded-lg text-xs space-y-1">
+                  <div className="font-semibold text-primary mb-1 text-[11px] uppercase tracking-wider">Cálculo Estimado CLP (19% IVA)</div>
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">Neto:</span>
+                    <span className="font-mono font-semibold">{formatCLP(calculatedNet)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">IVA (19%):</span>
+                    <span className="font-mono font-semibold">{formatCLP(calculatedTax)}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-outline-variant/30 pt-1 mt-1 font-bold">
+                    <span className="text-primary">Total Bruto:</span>
+                    <span className="font-mono text-primary">{formatCLP(calculatedTotal)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Local File Upload for Invoice PDF */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Archivo Respaldo Factura (PDF / Imagen)</label>
+                <input 
+                  type="file"
+                  accept=".pdf,image/*"
+                  className="w-full px-md py-2 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none text-body-sm file:mr-md file:py-1 file:px-sm file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-white hover:file:bg-primary-container cursor-pointer"
+                  onChange={(e) => setInvoiceFile(e.target.files[0])}
+                  disabled={isSaving}
+                />
+                {selectedInstallment.invoiceFileUrl && (
+                  <p className="text-[10px] text-on-surface-variant italic">
+                    Ya existe un archivo cargado. Seleccione uno nuevo solo si desea reemplazarlo.
+                  </p>
+                )}
+              </div>
+
+              {/* Comentarios */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Comentario</label>
+                <textarea 
+                  rows="2"
+                  className="w-full px-md py-2 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none text-body-sm"
+                  value={emitComment}
+                  onChange={(e) => setEmitComment(e.target.value)}
+                  placeholder="Observaciones..."
+                  disabled={isSaving}
+                />
+              </div>
+
               <div className="flex gap-md justify-end mt-sm">
                 <button 
                   type="button" 
-                  onClick={() => setIsPaymentModalOpen(false)}
+                  onClick={() => setIsEmitModalOpen(false)}
                   className="px-lg py-md border border-outline-variant text-on-surface-variant rounded-lg font-bold hover:bg-surface-container-low transition-colors"
+                  disabled={isSaving}
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit" 
-                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
+                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98] flex items-center gap-xs"
+                  disabled={isSaving}
                 >
-                  Registrar Pago
+                  {isSaving ? (
+                    <>
+                      <span className="animate-spin text-[16px] material-symbols-outlined">sync</span>
+                      <span>Subiendo y Guardando...</span>
+                    </>
+                  ) : (
+                    <span>Registrar Facturación</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -362,78 +973,243 @@ export default function Facturacion({ invoices, onUpdateInvoiceStatus, onAddInvo
         </div>
       )}
 
-      {/* Modal: Crear Factura */}
-      {isInvoiceModalOpen && (
+      {/* --- MODAL B: Registrar Pago --- */}
+      {isPaymentModalOpen && selectedInstallment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl border border-outline-variant shadow-lg max-w-md w-full overflow-hidden animate-scale-up">
-            <div className="bg-primary text-white p-lg flex justify-between items-center">
+          <div className="bg-white rounded-xl border border-outline-variant shadow-lg max-w-md w-full overflow-hidden animate-scale-up text-left">
+            <div className="bg-secondary text-white p-lg flex justify-between items-center">
               <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
-                <span className="material-symbols-outlined">receipt_long</span>
-                Crear Nueva Factura
+                <span className="material-symbols-outlined">price_check</span>
+                Registrar Pago de Factura
               </h3>
-              <button onClick={() => setIsInvoiceModalOpen(false)} className="text-white hover:text-secondary-fixed transition-colors">
+              <button 
+                onClick={() => setIsPaymentModalOpen(false)} 
+                className="text-white hover:text-secondary-fixed transition-colors"
+                disabled={isSaving}
+              >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleCreateInvoiceSubmit} className="p-lg flex flex-col gap-md text-left">
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Cliente</label>
-                <select 
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  required
-                >
-                  <option value="">Seleccione Cliente...</option>
-                  {clients.map(c => {
-                    const val = c.name || c.company;
-                    const label = c.name ? `${c.name} (${c.company})` : c.company;
-                    return (
-                      <option key={c.id} value={val}>{label}</option>
-                    );
-                  })}
-                  {clientName && !clients.some(c => (c.name || c.company) === clientName) && (
-                    <option value={clientName}>{clientName}</option>
-                  )}
-                </select>
+            
+            <form onSubmit={handleSavePayment} className="p-lg flex flex-col gap-md">
+              <div className="p-sm bg-surface-container-low border border-outline-variant rounded-lg text-xs space-y-1">
+                <p className="text-on-surface-variant">
+                  <strong>Factura Folio:</strong> {selectedInstallment.invoiceNumber}
+                </p>
+                <p className="text-on-surface-variant">
+                  <strong>Monto Planificado CLP:</strong> {formatCLP(selectedInstallment.total_clp)}
+                </p>
               </div>
+
+              {/* Fecha Pago */}
               <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Monto de la Factura</label>
-                <input 
-                  type="number"
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="Monto en $"
-                  required
-                />
-              </div>
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Fecha de Vencimiento</label>
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Fecha de Pago Real</label>
                 <input 
                   type="date"
-                  className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full px-md py-2.5 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none text-primary font-semibold"
+                  value={actualPaymentDate}
+                  onChange={(e) => setActualPaymentDate(e.target.value)}
                   required
+                  disabled={isSaving}
                 />
               </div>
+
+              {/* Monto Recibido */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Monto Recibido en CLP ($)</label>
+                <input 
+                  type="number"
+                  className="w-full px-md py-2.5 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none font-bold text-secondary text-body-md"
+                  value={totalClpReceived}
+                  onChange={(e) => setTotalClpReceived(e.target.value)}
+                  required
+                  disabled={isSaving}
+                />
+                <p className="text-[10px] text-on-surface-variant">Pre-cargado con el Bruto. Modifique en caso de abonos o reajustes.</p>
+              </div>
+
+              {/* Local File Upload for Payment Backup */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Comprobante de Pago (PDF / Imagen)</label>
+                <input 
+                  type="file"
+                  accept=".pdf,image/*"
+                  className="w-full px-md py-2 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none text-body-sm file:mr-md file:py-1 file:px-sm file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-secondary file:text-white hover:file:bg-secondary/90 cursor-pointer"
+                  onChange={(e) => setPaymentFile(e.target.files[0])}
+                  disabled={isSaving}
+                />
+                {selectedInstallment.paymentBackupUrl && (
+                  <p className="text-[10px] text-on-surface-variant italic">
+                    Ya existe un archivo cargado. Seleccione uno nuevo solo si desea reemplazarlo.
+                  </p>
+                )}
+              </div>
+
+              {/* Comentarios de Cobranza */}
+              <div className="space-y-xs">
+                <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block">Comentario de Cobranza</label>
+                <textarea 
+                  rows="2"
+                  className="w-full px-md py-2 bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none text-body-sm"
+                  value={paymentComment}
+                  onChange={(e) => setPaymentComment(e.target.value)}
+                  placeholder="Detalles del depósito o notas..."
+                  disabled={isSaving}
+                />
+              </div>
+
               <div className="flex gap-md justify-end mt-sm">
                 <button 
                   type="button" 
-                  onClick={() => setIsInvoiceModalOpen(false)}
+                  onClick={() => setIsPaymentModalOpen(false)}
                   className="px-lg py-md border border-outline-variant text-on-surface-variant rounded-lg font-bold hover:bg-surface-container-low transition-colors"
+                  disabled={isSaving}
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit" 
-                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
+                  className="px-lg py-md bg-secondary text-white hover:bg-secondary/90 rounded-lg font-bold transition-all active:scale-[0.98] flex items-center gap-xs"
+                  disabled={isSaving}
                 >
-                  Generar Factura
+                  {isSaving ? (
+                    <>
+                      <span className="animate-spin text-[16px] material-symbols-outlined">sync</span>
+                      <span>Subiendo y Guardando...</span>
+                    </>
+                  ) : (
+                    <span>Registrar Conciliación</span>
+                  )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL C: Ver Detalles (Solo lectura) --- */}
+      {isDetailsModalOpen && selectedInstallment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary/40 backdrop-blur-sm">
+          <div className="bg-white rounded-xl border border-outline-variant shadow-lg max-w-md w-full overflow-hidden animate-scale-up text-left">
+            <div className="bg-primary text-white p-lg flex justify-between items-center">
+              <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
+                <span className="material-symbols-outlined">visibility</span>
+                Detalles de Cuota Conciliada
+              </h3>
+              <button 
+                onClick={() => setIsDetailsModalOpen(false)} 
+                className="text-white hover:text-secondary-fixed transition-colors"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-lg space-y-md text-body-sm">
+              <div className="grid grid-cols-2 gap-sm border-b border-outline-variant/30 pb-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Nº Cuota</span>
+                  <span className="text-primary font-bold text-body-md">{selectedInstallment.numQuota || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Estado</span>
+                  <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold uppercase">{selectedInstallment.status}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-sm border-b border-outline-variant/30 pb-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Monto Planificado UF</span>
+                  <span className="font-semibold text-primary">{formatUF(selectedInstallment.uf)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Folio Factura</span>
+                  <span className="font-semibold text-primary">{selectedInstallment.invoiceNumber || '-'}</span>
+                </div>
+              </div>
+
+              <div className="bg-surface-container-low border border-outline-variant p-md rounded-lg space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block mb-1">Desglose Monetario (CLP)</span>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Neto:</span>
+                  <span className="font-mono font-medium">{formatCLP(selectedInstallment.net_clp)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">IVA (19%):</span>
+                  <span className="font-mono font-medium">{formatCLP(selectedInstallment.tax_clp)}</span>
+                </div>
+                <div className="flex justify-between font-bold border-t border-outline-variant/20 pt-1 mt-1">
+                  <span className="text-primary">Total Recibido:</span>
+                  <span className="font-mono text-primary">{formatCLP(selectedInstallment.total_clp)}</span>
+                </div>
+                {selectedInstallment.uf > 0 && selectedInstallment.net_clp && (
+                  <div className="flex justify-between text-[10px] text-on-surface-variant border-t border-outline-variant/10 pt-1 mt-1">
+                    <span>UF Referencial Aplicada:</span>
+                    <span className="font-bold">${Math.round(selectedInstallment.net_clp / selectedInstallment.uf).toLocaleString('es-CL')}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-sm border-b border-outline-variant/30 pb-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Fecha Emisión Factura</span>
+                  <span className="text-on-surface-variant font-medium">{formatDate(selectedInstallment.actualInvoiceDate)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Fecha Pago Realizado</span>
+                  <span className="text-on-surface-variant font-medium">{formatDate(selectedInstallment.actualPaymentDate)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Documentos de Respaldo</span>
+                <div className="flex flex-wrap gap-sm">
+                  {selectedInstallment.invoiceFileUrl ? (
+                    <a 
+                      href={selectedInstallment.invoiceFileUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="inline-flex items-center gap-xs px-md py-sm bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant rounded-lg text-primary font-semibold transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                      <span>Descargar Factura</span>
+                    </a>
+                  ) : null}
+                  {selectedInstallment.paymentBackupUrl ? (
+                    <a 
+                      href={selectedInstallment.paymentBackupUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="inline-flex items-center gap-xs px-md py-sm bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant rounded-lg text-secondary font-semibold transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">receipt</span>
+                      <span>Comprobante Pago</span>
+                    </a>
+                  ) : null}
+                  {!selectedInstallment.invoiceFileUrl && !selectedInstallment.paymentBackupUrl ? (
+                    <span className="text-on-surface-variant italic">No se subieron respaldos para esta cuota.</span>
+                  ) : null}
+                </div>
+              </div>
+
+              {selectedInstallment.comment && (
+                <div className="space-y-xs border-t border-outline-variant/30 pt-3">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline-variant block">Notas / Comentarios</span>
+                  <p className="bg-surface-container-low p-sm rounded border border-outline-variant/30 text-on-surface-variant italic">
+                    {selectedInstallment.comment}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex justify-end mt-md">
+                <button 
+                  type="button" 
+                  onClick={() => setIsDetailsModalOpen(false)}
+                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
+                >
+                  Cerrar Detalles
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

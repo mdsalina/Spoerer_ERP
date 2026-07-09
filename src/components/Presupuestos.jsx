@@ -1017,6 +1017,77 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
         </div>
       </div>
 
+      {/* Sección de Resumen Financiero por Período */}
+      <div className="glass-card rounded-xl p-lg shadow-sm space-y-md">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="font-title-lg text-title-lg text-primary font-bold">Resumen de Presupuestos</h3>
+            <p className="text-on-surface-variant text-body-sm">
+              Monto acumulado en UF según el estado del presupuesto en el período seleccionado.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="calc-period-select" className="text-label-md text-on-surface-variant uppercase font-semibold">
+              Período de cálculo:
+            </label>
+            <select
+              id="calc-period-select"
+              value={calcPeriod}
+              onChange={(e) => setCalcPeriod(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none cursor-pointer"
+            >
+              <option value="1">1 mes</option>
+              <option value="6">6 Meses</option>
+              <option value="12">12 meses</option>
+              <option value="24">24 meses</option>
+              <option value="36">36 meses</option>
+              <option value="all">all</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
+          {/* Tarjeta Aprobados */}
+          <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider">Aprobados ({approvedQuotesCount})</span>
+              <div className="font-display-lg text-display-lg text-emerald-950 font-extrabold">
+                {totalApproved.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-emerald-800">UF</span>
+              </div>
+            </div>
+            <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[32px]">check_circle</span>
+            </div>
+          </div>
+
+          {/* Tarjeta Enviados */}
+          <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Enviados ({sentQuotesCount})</span>
+              <div className="font-display-lg text-display-lg text-blue-950 font-extrabold">
+                {totalSent.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-blue-800">UF</span>
+              </div>
+            </div>
+            <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[32px]">send</span>
+            </div>
+          </div>
+
+          {/* Tarjeta Rechazados */}
+          <div className="bg-red-50/40 border border-red-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
+            <div className="space-y-1">
+              <span className="text-label-md text-red-800 uppercase font-bold tracking-wider">Rechazados ({rejectedQuotesCount})</span>
+              <div className="font-display-lg text-display-lg text-red-950 font-extrabold">
+                {totalRejected.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-red-800">UF</span>
+              </div>
+            </div>
+            <div className="p-3 bg-red-100 rounded-full text-red-600 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[32px]">cancel</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Filter and Summary Bar */}
       <section className="glass-card rounded-xl p-md flex flex-wrap items-center justify-between gap-md shadow-sm">
         <div className="flex-grow max-w-md min-w-[240px]">
@@ -1183,77 +1254,6 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
             <button className="p-2 border border-outline-variant rounded bg-white hover:bg-slate-50 transition-all">
               <span className="material-symbols-outlined text-sm">chevron_right</span>
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Sección de Resumen Financiero por Período */}
-      <div className="glass-card rounded-xl p-lg shadow-sm space-y-md">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h3 className="font-title-lg text-title-lg text-primary font-bold">Resumen de Presupuestos</h3>
-            <p className="text-on-surface-variant text-body-sm">
-              Monto acumulado en UF según el estado del presupuesto en el período seleccionado.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <label htmlFor="calc-period-select" className="text-label-md text-on-surface-variant uppercase font-semibold">
-              Período de cálculo:
-            </label>
-            <select
-              id="calc-period-select"
-              value={calcPeriod}
-              onChange={(e) => setCalcPeriod(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none cursor-pointer"
-            >
-              <option value="1">1 mes</option>
-              <option value="6">6 Meses</option>
-              <option value="12">12 meses</option>
-              <option value="24">24 meses</option>
-              <option value="36">36 meses</option>
-              <option value="all">all</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-md">
-          {/* Tarjeta Aprobados */}
-          <div className="bg-emerald-50/40 border border-emerald-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
-            <div className="space-y-1">
-              <span className="text-label-md text-emerald-800 uppercase font-bold tracking-wider">Aprobados ({approvedQuotesCount})</span>
-              <div className="font-display-lg text-display-lg text-emerald-950 font-extrabold">
-                {totalApproved.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-emerald-800">UF</span>
-              </div>
-            </div>
-            <div className="p-3 bg-emerald-100 rounded-full text-emerald-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[32px]">check_circle</span>
-            </div>
-          </div>
-
-          {/* Tarjeta Enviados */}
-          <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
-            <div className="space-y-1">
-              <span className="text-label-md text-blue-800 uppercase font-bold tracking-wider">Enviados ({sentQuotesCount})</span>
-              <div className="font-display-lg text-display-lg text-blue-950 font-extrabold">
-                {totalSent.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-blue-800">UF</span>
-              </div>
-            </div>
-            <div className="p-3 bg-blue-100 rounded-full text-blue-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[32px]">send</span>
-            </div>
-          </div>
-
-          {/* Tarjeta Rechazados */}
-          <div className="bg-red-50/40 border border-red-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
-            <div className="space-y-1">
-              <span className="text-label-md text-red-800 uppercase font-bold tracking-wider">Rechazados ({rejectedQuotesCount})</span>
-              <div className="font-display-lg text-display-lg text-red-950 font-extrabold">
-                {totalRejected.toLocaleString('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} <span className="text-body-md font-semibold text-red-800">UF</span>
-              </div>
-            </div>
-            <div className="p-3 bg-red-100 rounded-full text-red-600 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[32px]">cancel</span>
-            </div>
           </div>
         </div>
       </div>
@@ -1812,16 +1812,16 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                                   className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white"
                                 />
                               </td>
-                              <td className="p-1">
-                                <select
-                                  value={row.status || 'Por facturar'}
-                                  onChange={(e) => handleEditRowChange(idx, 'status', e.target.value)}
-                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white cursor-pointer font-medium"
-                                >
-                                  <option value="Por facturar">Por facturar</option>
-                                  <option value="Factura emitida">Factura emitida</option>
-                                  <option value="Pagada">Pagada</option>
-                                </select>
+                              <td className="p-1 text-center">
+                                <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                  (row.status || 'Por facturar') === 'Pagada'
+                                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
+                                    : (row.status || 'Por facturar') === 'Factura emitida'
+                                      ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
+                                      : 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                                }`}>
+                                  {row.status || 'Por facturar'}
+                                </span>
                               </td>
                               <td className="p-1">
                                 <input

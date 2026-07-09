@@ -177,7 +177,10 @@ export default function App() {
         }
       });
       setQuotes(prev => prev.map(q => q.id === budgetId ? result.budget : q));
-      setInstallments(prev => [...prev, ...result.installments]);
+      setInstallments(prev => {
+        const filtered = prev.filter(i => i.project_id !== result.project.id);
+        return [...filtered, ...result.installments];
+      });
       
       alert("¡Presupuesto aprobado y Proyecto guardado con éxito!");
     } catch (err) {
@@ -224,6 +227,7 @@ export default function App() {
       try {
         await supabaseService.deleteProject(id);
         setProjects(prev => prev.filter(p => p.id !== id));
+        setInstallments(prev => prev.filter(i => i.project_id !== id));
         alert("Proyecto eliminado exitosamente.");
       } catch (err) {
         alert("Error al eliminar proyecto: " + err.message);
@@ -439,10 +443,11 @@ export default function App() {
           )}
           {currentTab === 'facturacion' && (
             <Facturacion 
-              invoices={invoices} 
+              projects={projects}
+              budgets={quotes}
+              installments={installments}
               clients={clients}
-              onUpdateInvoiceStatus={updateInvoiceStatus} 
-              onAddInvoice={addInvoice} 
+              onUpdateInstallment={handleUpdateInstallment}
             />
           )}
           {currentTab === 'usuarios' && isAdmin && (
