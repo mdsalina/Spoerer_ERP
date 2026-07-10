@@ -516,7 +516,10 @@ export default function Proyectos({
                 className="bg-white rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden transition-all hover:shadow"
               >
                 {/* Project Summary Header */}
-                <div className="p-md sm:p-lg flex flex-col md:flex-row md:items-center justify-between gap-md bg-slate-50/50">
+                <div
+                  onClick={() => toggleExpand(project.id)}
+                  className="p-md sm:p-lg flex flex-col md:flex-row md:items-center justify-between gap-md bg-slate-50/50 cursor-pointer hover:bg-slate-100/50 transition-colors"
+                >
                   <div className="flex items-start gap-md min-w-0">
                     <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm mt-1">
                       <span className="material-symbols-outlined text-[20px]">folder_special</span>
@@ -525,7 +528,7 @@ export default function Proyectos({
                       <h3 className="font-title-lg text-title-lg text-primary font-bold truncate max-w-lg" title={project.projectName}>
                         {project.projectName}
                       </h3>
-                      <div className="flex flex-wrap gap-x-base gap-y-1 text-body-sm text-on-surface-variant mt-1 items-center">
+                      <div className="flex flex-wrap gap-x-base gap-y-1 text-body-sm text-on-surface-variant mt-1 items-center font-medium">
                         <span className="font-semibold text-on-surface-variant">
                           {project.cliente}
                         </span>
@@ -557,28 +560,40 @@ export default function Proyectos({
                     {/* Actions */}
                     <div className="flex items-center gap-2 pl-sm border-l border-outline-variant/40">
                       <button
-                        onClick={() => handleOpenExtraCostModal(project)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenExtraCostModal(project);
+                        }}
                         className="p-2 hover:bg-slate-100 rounded text-emerald-600 hover:text-emerald-700 transition-all font-bold flex items-center justify-center animate-pulse-subtle"
                         title="Agregar costo extra"
                       >
                         <span className="material-symbols-outlined text-[20px]">add</span>
                       </button>
                       <button
-                        onClick={() => handleOpenEditModal(project)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditModal(project);
+                        }}
                         className="p-2 hover:bg-slate-100 rounded text-slate-700 hover:text-primary transition-all"
                         title="Editar parámetros generales del proyecto"
                       >
                         <span className="material-symbols-outlined text-[20px]">edit</span>
                       </button>
                       <button
-                        onClick={() => handleDeleteProjectLocal(project.id, project.projectName)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProjectLocal(project.id, project.projectName);
+                        }}
                         className="p-2 hover:bg-red-50 rounded text-error hover:text-red-700 transition-all"
                         title="Eliminar proyecto por completo"
                       >
                         <span className="material-symbols-outlined text-[20px]">delete</span>
                       </button>
                       <button
-                        onClick={() => toggleExpand(project.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpand(project.id);
+                        }}
                         className={`p-2 hover:bg-slate-100 rounded text-secondary transition-all flex items-center gap-1 font-bold text-body-sm ${isExpanded ? 'bg-slate-100' : ''
                           }`}
                       >
