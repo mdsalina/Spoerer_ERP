@@ -127,7 +127,7 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
   );
 
   return (
-    <div className="space-y-lg animate-fade-in text-left">
+    <div className="space-y-xl animate-fade-in text-left">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
@@ -157,7 +157,7 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
       </div>
 
       {/* Bento Stats Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-md mb-xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-md">
         {/* KPI 1: Usuarios Totales */}
         <div className="bg-blue-50/40 border border-blue-200/60 rounded-xl p-md flex items-center justify-between hover-scale shadow-sm transition-all">
           <div className="space-y-1">
@@ -542,102 +542,114 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
         </div>
       )}
 
-
-
       {/* Modal: Edit User Details */}
       {isEditModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md">
-          <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl overflow-hidden border border-outline-variant animate-scale-up text-left">
-            <div className="px-lg py-md border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
-              <h2 className="font-headline-sm text-headline-sm text-primary font-bold">Editar Usuario ERP</h2>
-              <button 
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm">
+          <div className="relative bg-white w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up text-left">
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Editar Usuario ERP</h2>
+                <p className="text-body-md text-on-surface-variant flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-bold text-emerald-600">Usuario: {selectedUser.name}</span>
+                </p>
+              </div>
+              <button
                 onClick={() => {
                   setIsEditModalOpen(false);
                   setSelectedUser(null);
-                }} 
-                className="p-2 hover:bg-surface-container rounded-full text-on-surface-variant transition-all"
+                }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-all"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            
-            <form onSubmit={handleEditSubmit} className="p-lg space-y-md">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant font-bold">NOMBRE COMPLETO</label>
+
+            <form onSubmit={handleEditSubmit} className="p-lg space-y-lg text-left">
+              <div className="bg-slate-50/50 p-md rounded-xl border border-slate-200/60 space-y-md animate-fade-in">
+                <h3 className="text-body-md font-bold text-primary flex items-center gap-2 border-b border-slate-200/60 pb-2">
+                  <span className="material-symbols-outlined text-[20px] text-secondary">person</span>
+                  Información del Usuario
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Nombre Completo</label>
+                    <input 
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                      type="text"
+                      required
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Correo Laboral</label>
+                    <input 
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                      type="email"
+                      required
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Rol Principal</label>
+                    <select 
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value)}
+                    >
+                      <option value="Admin">Administrador - Acceso Total</option>
+                      <option value="Sales">Ventas - CRM y Presupuestos</option>
+                      <option value="Accountant">Contador - Finanzas e Impuestos</option>
+                      <option value="Project_Manager">Soporte - Mesa de Ayuda</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Estado de Cuenta</label>
+                    <select 
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                    >
+                      <option value="Active">Activo</option>
+                      <option value="Inactive">Inactivo</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Modificar Contraseña</label>
                   <input 
-                    className="w-full border border-outline-variant rounded-lg p-sm focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all font-body-md text-body-md" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                    placeholder="Nueva contraseña (dejar en blanco para conservar actual)" 
                     type="text"
-                    required
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
                   />
-                </div>
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant font-bold">CORREO LABORAL</label>
-                  <input 
-                    className="w-full border border-outline-variant rounded-lg p-sm focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all font-body-md text-body-md" 
-                    type="email"
-                    required
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                  />
+                  <p className="text-[11px] text-on-surface-variant/70 italic mt-0.5">Ingrese una nueva contraseña si desea modificar la actual del usuario.</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant font-bold">ROL PRINCIPAL</label>
-                  <select 
-                    className="w-full border border-outline-variant rounded-lg p-sm focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all font-body-md text-body-md bg-white"
-                    value={editRole}
-                    onChange={(e) => setEditRole(e.target.value)}
-                  >
-                    <option value="Admin">Administrador - Acceso Total</option>
-                    <option value="Sales">Ventas - CRM y Presupuestos</option>
-                    <option value="Accountant">Contador - Finanzas e Impuestos</option>
-                    <option value="Project_Manager">Soporte - Mesa de Ayuda</option>
-                  </select>
-                </div>
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant font-bold">ESTADO DE CUENTA</label>
-                  <select 
-                    className="w-full border border-outline-variant rounded-lg p-sm focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all font-body-md text-body-md bg-white"
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                  >
-                    <option value="Active">Activo</option>
-                    <option value="Inactive">Inactivo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-xs">
-                <label className="font-label-sm text-label-sm text-on-surface-variant font-bold">MODIFICAR CONTRASEÑA</label>
-                <input 
-                  className="w-full border border-outline-variant rounded-lg p-sm focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all font-body-md text-body-md" 
-                  placeholder="Nueva contraseña (dejar en blanco para conservar actual)" 
-                  type="text"
-                  value={editPassword}
-                  onChange={(e) => setEditPassword(e.target.value)}
-                />
-                <p className="text-[11px] text-on-surface-variant/70 italic">Ingrese una nueva contraseña si desea modificar la actual del usuario.</p>
-              </div>
-
-              <div className="pt-lg flex justify-end gap-md border-t border-outline-variant/30">
-                <button 
-                  className="px-lg py-sm font-semibold text-on-surface-variant hover:text-on-surface transition-all" 
+              {/* Footer Actions */}
+              <div className="flex justify-end gap-md pt-lg border-t border-outline-variant">
+                <button
+                  type="button"
                   onClick={() => {
                     setIsEditModalOpen(false);
                     setSelectedUser(null);
-                  }} 
-                  type="button"
+                  }}
+                  className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
                 >
-                  Cancelar
+                  Descartar
                 </button>
-                <button 
-                  className="bg-primary text-white px-xl py-sm rounded-lg font-semibold shadow-sm hover:bg-primary-container active:scale-95 transition-all" 
+                <button
                   type="submit"
+                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95"
                 >
                   Guardar Cambios
                 </button>

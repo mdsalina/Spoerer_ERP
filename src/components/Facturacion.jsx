@@ -551,7 +551,7 @@ export default function Facturacion({ projects, budgets, installments, clients, 
   };
 
   return (
-    <div className="space-y-lg animate-fade-in text-left">
+    <div className="space-y-xl animate-fade-in text-left">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
@@ -560,25 +560,25 @@ export default function Facturacion({ projects, budgets, installments, clients, 
         </div>
         <div className="flex gap-sm">
           <button 
-            onClick={handleExportBilling}
-            className="flex items-center gap-xs px-md py-sm bg-secondary text-white font-bold rounded-lg transition-all active:scale-95 text-xs hover:brightness-105"
-          >
-            <span className="material-symbols-outlined text-[18px]">file_download</span>
-            <span>Exportar Facturación</span>
-          </button>
-          <button 
             onClick={expandAll}
-            className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-semibold rounded-lg transition-all active:scale-95 text-xs"
+            className="flex items-center gap-2 px-md py-2 border border-outline-variant bg-white hover:bg-slate-50 text-on-surface font-semibold rounded transition-all active:scale-95 font-label-md"
           >
             <span className="material-symbols-outlined text-[18px]">unfold_more</span>
             <span>Expandir Todo</span>
           </button>
           <button 
             onClick={collapseAll}
-            className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-semibold rounded-lg transition-all active:scale-95 text-xs"
+            className="flex items-center gap-2 px-md py-2 border border-outline-variant bg-white hover:bg-slate-50 text-on-surface font-semibold rounded transition-all active:scale-95 font-label-md"
           >
             <span className="material-symbols-outlined text-[18px]">unfold_less</span>
             <span>Colapsar Todo</span>
+          </button>
+          <button 
+            onClick={handleExportBilling}
+            className="flex items-center gap-2 px-md py-2 bg-secondary text-white font-bold rounded hover:brightness-105 transition-all font-label-md active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[18px]">file_download</span>
+            <span>Exportar Facturación</span>
           </button>
         </div>
       </div>
@@ -637,17 +637,16 @@ export default function Facturacion({ projects, budgets, installments, clients, 
           </div>
         </div>
       </div>
-
       {/* SECTION B: Barra de Filtros y Búsqueda */}
       <section className="glass-card rounded-xl p-md flex flex-col lg:flex-row items-stretch lg:items-end gap-md justify-between shadow-sm">
         {/* Left Side: Buscar and Limpiar */}
         <div className="flex flex-wrap items-end gap-md w-full lg:w-auto">
-          <div className="flex-grow max-w-5xl min-w-[240px]">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">Búsqueda General</span>
+          <div className="flex flex-col flex-grow max-w-5xl min-w-[240px]">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Búsqueda General</label>
             <div className="relative w-full">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
               <input 
-                className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none h-[38px]" 
+                className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:border-outline-none h-[38px]" 
                 placeholder="Factura, Proyecto o Cliente..." 
                 type="text"
                 value={searchTerm}
@@ -668,8 +667,8 @@ export default function Facturacion({ projects, budgets, installments, clients, 
         {/* Right Side: Filters */}
         <div className="flex flex-wrap items-end gap-md justify-end w-full lg:w-auto">
           {/* Temporal Filter */}
-          <div className="flex flex-col gap-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Período de Vencimiento</span>
+          <div className="flex flex-col">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Período de Vencimiento</label>
             <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant">
               {[
                 { value: '1_mes', label: '1 Mes' },
@@ -681,7 +680,7 @@ export default function Facturacion({ projects, budgets, installments, clients, 
                   key={p.value}
                   type="button"
                   onClick={() => setTemporalFilter(p.value)}
-                  className={`px-sm py-1.5 rounded text-[11px] font-semibold transition-all ${
+                  className={`px-sm py-1.5 rounded text-xs font-semibold transition-all ${
                     temporalFilter === p.value 
                       ? 'bg-primary text-white shadow-sm' 
                       : 'text-on-surface-variant hover:bg-surface-container-high'
@@ -694,8 +693,8 @@ export default function Facturacion({ projects, budgets, installments, clients, 
           </div>
 
           {/* Status Filter */}
-          <div className="flex flex-col gap-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Estado Cuota</span>
+          <div className="flex flex-col">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Estado Cuota</label>
             <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant">
               {[
                 { value: 'Todos', label: 'Todos' },
@@ -708,7 +707,7 @@ export default function Facturacion({ projects, budgets, installments, clients, 
                   key={s.value}
                   type="button"
                   onClick={() => setStatusFilter(s.value)}
-                  className={`px-sm py-1.5 rounded text-[11px] font-semibold transition-all ${
+                  className={`px-sm py-1.5 rounded text-xs font-semibold transition-all ${
                     statusFilter === s.value 
                       ? 'bg-primary text-white shadow-sm' 
                       : 'text-on-surface-variant hover:bg-surface-container-high'
@@ -721,12 +720,12 @@ export default function Facturacion({ projects, budgets, installments, clients, 
           </div>
 
           {/* Client Filter */}
-          <div className="flex flex-col gap-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Cliente</span>
+          <div className="flex flex-col">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Cliente</label>
             <select
               value={clientFilter}
               onChange={(e) => setClientFilter(e.target.value)}
-              className="px-md py-2 bg-white border border-outline-variant rounded-lg text-body-sm focus:outline-none h-[38px] max-w-[220px] font-semibold text-primary"
+              className="px-md py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:border-outline-none h-[38px] max-w-[220px] font-medium text-on-surface"
             >
               <option value="Todos">Todos los clientes</option>
               {clients.map(c => (
@@ -747,36 +746,44 @@ export default function Facturacion({ projects, budgets, installments, clients, 
             return (
               <div 
                 key={pId} 
-                className="bg-white border border-outline-variant rounded-xl overflow-hidden hover:shadow-sm transition-shadow text-left"
+                className="bg-white rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden transition-all hover:shadow text-left"
               >
                 {/* Nivel 1: Tarjeta de Proyecto */}
                 <div 
                   onClick={() => toggleProject(pId)}
-                  className="px-lg py-md bg-surface-bright flex flex-col sm:flex-row justify-between items-start sm:items-center gap-md border-b border-outline-variant/30 cursor-pointer hover:bg-surface-container-lowest transition-colors"
+                  className="p-md sm:p-lg flex flex-col md:flex-row md:items-center justify-between gap-md bg-slate-50/50 cursor-pointer hover:bg-slate-100/50 transition-colors"
                 >
-                  <div className="space-y-xs">
-                    <div className="flex items-center gap-xs">
-                      <span className="material-symbols-outlined text-outline text-[18px] select-none">
-                        {isExpanded ? 'expand_more' : 'chevron_right'}
-                      </span>
-                      <h4 className="font-title-md text-title-md text-primary font-bold">
-                        {project.projectNumber} - {project.rawProjectName}
-                      </h4>
+                  <div className="flex items-start gap-md min-w-0">
+                    <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-sm mt-1">
+                      <span className="material-symbols-outlined text-[20px]">attach_money</span>
                     </div>
-                    <div className="flex items-center gap-sm pl-6 text-on-surface-variant text-body-sm font-medium">
-                      <span className="material-symbols-outlined text-[16px] text-outline">corporate_fare</span>
-                      <span>{project.cliente || 'Cliente no definido'}</span>
+                    <div className="flex flex-col min-w-0">
+                      <h3 className="font-title-lg text-title-lg text-primary font-bold truncate max-w-lg" title={`${project.projectNumber} - ${project.rawProjectName}`}>
+                        {project.projectNumber} - {project.rawProjectName}
+                      </h3>
+                      <div className="flex flex-wrap gap-x-base gap-y-1 text-body-sm text-on-surface-variant mt-1 items-center font-medium">
+                        <span className="font-semibold text-on-surface-variant">
+                          {project.cliente || 'Cliente no definido'}
+                        </span>
+                        {project.anio && (
+                          <>
+                            <span className="text-outline-variant">•</span>
+                            <span>Año {project.anio}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-lg self-end sm:self-auto pl-6 sm:pl-0">
+                  <div className="flex items-center gap-lg self-end md:self-auto pl-12 md:pl-0">
                     <div className="text-right">
                       <span className="text-[10px] font-bold text-outline-variant block uppercase tracking-wider">Total UF Filtrado</span>
                       <span className="text-body-md font-bold text-primary">{formatUF(plannedTotalUf)}</span>
                     </div>
-                    <div className="p-1 bg-surface-container-high rounded-full text-outline hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-[20px]">
-                        {isExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+                    <div className={`p-2 hover:bg-slate-200/60 rounded text-secondary transition-all flex items-center gap-1 font-bold text-body-sm ${isExpanded ? 'bg-slate-200/60' : ''}`}>
+                      <span>{isExpanded ? 'Colapsar' : 'Detalle'}</span>
+                      <span className={`material-symbols-outlined transition-all ${isExpanded ? 'rotate-180' : ''}`}>
+                        keyboard_arrow_down
                       </span>
                     </div>
                   </div>
@@ -784,7 +791,7 @@ export default function Facturacion({ projects, budgets, installments, clients, 
 
                 {/* Nivel 2: Presupuestos del Proyecto */}
                 {isExpanded && (
-                  <div className="p-lg bg-surface-container-lowest divide-y divide-outline-variant/20 space-y-lg">
+                  <div className="border-t border-outline-variant/20 p-lg bg-surface-container-lowest divide-y divide-outline-variant/20 space-y-lg">
                     {projectBudgets.map(({ id: bId, budget, title, amount, installments: budgetInstallments }) => {
                       return (
                         <div key={bId} className="pt-md first:pt-0 space-y-sm">

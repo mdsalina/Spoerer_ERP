@@ -1050,10 +1050,6 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
           <p className="text-on-surface-variant font-body-md mt-1">Crea, edita y haz seguimiento de cotizaciones para tus clientes.</p>
         </div>
         <div className="flex gap-3">
-          <button className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95">
-            <span className="material-symbols-outlined text-[16px]">file_download</span>
-            <span>Exportar PDF</span>
-          </button>
           <button
             onClick={handleOpenNewQuoteModal}
             className="flex items-center gap-2 px-md py-2 bg-secondary text-white rounded hover:brightness-105 transition-all font-label-md font-bold active:scale-95"

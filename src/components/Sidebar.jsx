@@ -81,20 +81,7 @@ export default function Sidebar({ children, currentTab, setCurrentTab, user, onL
         style={{ paddingLeft: isCollapsed ? '72px' : '260px' }}
       >
         {/* TopAppBar Shell */}
-        <header className="sticky top-0 z-40 flex justify-between items-center w-full px-lg h-16 bg-surface border-b border-outline-variant">
-          <div className="flex items-center gap-md w-1/3 text-left">
-            <div className="relative w-full max-w-sm">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[20px]">
-                search
-              </span>
-              <input
-                className="w-full pl-10 pr-4 py-2 bg-surface-container-low border border-outline-variant rounded-full text-body-md focus:ring-1 focus:ring-secondary focus:border-secondary focus:outline-none transition-all"
-                placeholder="Buscar en el sistema..."
-                type="text"
-              />
-            </div>
-          </div>
-
+        <header className="sticky top-0 z-40 flex justify-end items-center w-full px-lg h-16 bg-surface border-b border-outline-variant">
           <div className="flex items-center gap-lg">
             {/* Quick Actions */}
             <div className="flex items-center gap-md">

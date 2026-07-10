@@ -751,76 +751,105 @@ export default function Proyectos({
 
       {/* Modal: Edit Project */}
       {editingProject && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-md z-50 animate-fade-in text-left">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-lg shadow-xl border border-outline-variant/30 flex flex-col max-h-[90vh]">
-            <h2 className="font-headline-md text-headline-md text-primary font-bold mb-md">Editar Parámetros del Proyecto</h2>
-            <form onSubmit={handleSaveEdit} className="space-y-md overflow-y-auto flex-1 pr-sm">
-              <div className="flex flex-col">
-                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Nombre / Código Proyecto</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
-                  placeholder="Ej: 0280-Mantenimiento Anual"
-                  required
-                />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm">
+          <div className="relative bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Editar Parámetros</h2>
+                <p className="text-body-md text-on-surface-variant flex items-center gap-2">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-bold text-emerald-600">Proyecto: {editingProject.projectName}</span>
+                </p>
               </div>
-              <div className="flex flex-col">
-                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Superficie (m²)</label>
-                <input
-                  type="number"
-                  value={editSuperficie}
-                  onChange={(e) => setEditSuperficie(e.target.value)}
-                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
-                  placeholder="Superficie total"
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Rentabilidad Esperada (%)</label>
-                <input
-                  type="number"
-                  value={editRentabilidad}
-                  onChange={(e) => setEditRentabilidad(e.target.value)}
-                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
-                  placeholder="Margen de ganancia"
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Año</label>
-                <input
-                  type="number"
-                  value={editAnio}
-                  onChange={(e) => setEditAnio(e.target.value)}
-                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
-                  placeholder="Año contable"
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Cliente</label>
-                <select
-                  value={editCliente}
-                  onChange={(e) => setEditCliente(e.target.value)}
-                  className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface font-medium cursor-pointer"
-                >
-                  <option value="">Seleccione un cliente</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.company}>{c.company}</option>
-                  ))}
-                </select>
+              <button
+                onClick={() => setEditingProject(null)}
+                className="p-2 hover:bg-slate-100 rounded-full transition-all"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-lg space-y-lg text-left">
+              <div className="bg-slate-50/50 p-md rounded-xl border border-slate-200/60 space-y-md animate-fade-in">
+                <h3 className="text-body-md font-bold text-primary flex items-center gap-2 border-b border-slate-200/60 pb-2">
+                  <span className="material-symbols-outlined text-[20px] text-secondary">info</span>
+                  Información del Proyecto
+                </h3>
+
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider font-bold">Nombre / Código Proyecto</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                    placeholder="Ej: 0280-Mantenimiento Anual"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-md">
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider font-bold">Superficie (m²)</label>
+                    <input
+                      type="number"
+                      value={editSuperficie}
+                      onChange={(e) => setEditSuperficie(e.target.value)}
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                      placeholder="Superficie total"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider font-bold">Rentabilidad Esperada (%)</label>
+                    <input
+                      type="number"
+                      value={editRentabilidad}
+                      onChange={(e) => setEditRentabilidad(e.target.value)}
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                      placeholder="Margen de ganancia"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-md">
+                  <div className="flex flex-col gap-xs col-span-1">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider font-bold">Año</label>
+                    <input
+                      type="number"
+                      value={editAnio}
+                      onChange={(e) => setEditAnio(e.target.value)}
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                      placeholder="Año contable"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-xs col-span-2">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider font-bold">Cliente</label>
+                    <select
+                      value={editCliente}
+                      onChange={(e) => setEditCliente(e.target.value)}
+                      className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                    >
+                      <option value="">Seleccione un cliente</option>
+                      {clients.map(c => (
+                        <option key={c.id} value={c.company}>{c.company}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex justify-end gap-sm pt-md border-t">
+              {/* Footer Actions */}
+              <div className="flex justify-end gap-md pt-lg border-t border-outline-variant">
                 <button
                   type="button"
                   onClick={() => setEditingProject(null)}
-                  className="px-lg py-sm text-primary font-bold hover:bg-slate-100 rounded-lg transition-all text-body-md"
+                  className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
                 >
-                  Cancelar
+                  Descartar
                 </button>
                 <button
                   type="submit"
-                  className="px-lg py-sm bg-primary text-white font-bold rounded-lg hover:brightness-105 transition-all shadow-sm text-body-md"
+                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95"
                 >
                   Guardar Cambios
                 </button>
