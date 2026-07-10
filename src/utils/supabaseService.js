@@ -777,7 +777,13 @@ export const supabaseService = {
       email: p.email,
       role: p.role,
       status: p.status,
-      joinedDate: new Date(p.created_at).toLocaleDateString('es-CL'),
+      joinedDate: (() => {
+        const d = new Date(p.created_at);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${dd}/${mm}/${yyyy}`;
+      })(),
       initials: p.name 
         ? p.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() 
         : 'US'

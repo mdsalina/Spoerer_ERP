@@ -21,6 +21,28 @@ const parseDate = (dateStr) => {
   return new Date(dateStr);
 };
 
+const getTodayDDMMYYYY = () => {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+};
+
+const ensureDDMMYYYY = (dateStr) => {
+  if (!dateStr) return '';
+  if (dateStr.includes('/')) return dateStr;
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    if (parts[0].length === 4) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`; // YYYY-MM-DD -> DD/MM/YYYY
+    } else {
+      return `${parts[0]}/${parts[1]}/${parts[2]}`; // DD-MM-YYYY -> DD/MM/YYYY
+    }
+  }
+  return dateStr;
+};
+
 // Helper to check if a quote falls within the selected period of months
 const isQuoteInPeriod = (quote, period) => {
   if (period === 'all') return true;
@@ -175,7 +197,7 @@ export default function Presupuestos({
   const [quoteId, setQuoteId] = useState('');
   const [currentBudgetUuid, setCurrentBudgetUuid] = useState(null);
   const [selectedClient, setSelectedClient] = useState('');
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [issueDate, setIssueDate] = useState(getTodayDDMMYYYY());
   const [validity, setValidity] = useState(30);
   const [quoteTitle, setQuoteTitle] = useState('Servicios ERP');
   const [backupFiles, setBackupFiles] = useState([]);
@@ -609,7 +631,7 @@ export default function Presupuestos({
     setQuoteId(getNextQuoteId());
     setCurrentBudgetUuid(null);
     setSelectedClient('');
-    setIssueDate(new Date().toISOString().split('T')[0]);
+    setIssueDate(getTodayDDMMYYYY());
     setValidity(30);
     setQuoteTitle('Servicios ERP');
     setSubtotal(1200.00); // default value
@@ -631,16 +653,7 @@ export default function Presupuestos({
     );
     setSelectedClient(matchedClient ? matchedClient.id : (quote.clientId || ''));
 
-    let formattedDate = '';
-    if (quote.date) {
-      const parts = quote.date.split('/');
-      if (parts.length === 3) {
-        formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-      } else {
-        formattedDate = quote.date;
-      }
-    }
-    setIssueDate(formattedDate || new Date().toISOString().split('T')[0]);
+    setIssueDate(ensureDDMMYYYY(quote.date) || getTodayDDMMYYYY());
 
     const valDays = quote.validity ? parseInt(quote.validity) || 30 : 30;
     setValidity(valDays);
@@ -688,16 +701,7 @@ export default function Presupuestos({
       );
       setSelectedClient(matchedClient ? matchedClient.id : (existing.clientId || ''));
 
-      let formattedDate = '';
-      if (existing.date) {
-        const parts = existing.date.split('/');
-        if (parts.length === 3) {
-          formattedDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        } else {
-          formattedDate = existing.date;
-        }
-      }
-      setIssueDate(formattedDate || new Date().toISOString().split('T')[0]);
+      setIssueDate(ensureDDMMYYYY(existing.date) || getTodayDDMMYYYY());
 
       const valDays = existing.validity ? parseInt(existing.validity) || 30 : 30;
       setValidity(valDays);
@@ -908,7 +912,7 @@ export default function Presupuestos({
       if (data.title) setQuoteTitle(data.title);
 
       // 4. Dates
-      if (data.date) setIssueDate(data.date);
+      if (data.date) setIssueDate(ensureDDMMYYYY(data.date));
       if (data.validity) setValidity(data.validity);
 
       // 5. Subtotal
@@ -1006,7 +1010,7 @@ export default function Presupuestos({
       clientName: clientName,
       company: companyName,
       title: quoteTitle,
-      date: issueDate.split('-').reverse().join('/'),
+      date: ensureDDMMYYYY(issueDate),
       amount: parseFloat(subtotal) || 0,
       validity: `${validity} días`,
       status: finalStatus,
@@ -1681,13 +1685,32 @@ export default function Presupuestos({
                     <div className="grid grid-cols-2 gap-md">
                       <div className="flex flex-col gap-xs">
                         <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Fecha de Emisión</label>
-                        <input
-                          className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
-                          type="date"
-                          value={issueDate}
-                          onChange={(e) => setIssueDate(e.target.value)}
-                          required
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly
+                            value={issueDate}
+                            className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 outline-none transition-all bg-white pr-10"
+                            placeholder="dd/mm/yyyy"
+                          />
+                          <input
+                            type="date"
+                            value={issueDate ? issueDate.split('/').reverse().join('-') : ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val) {
+                                setIssueDate(val.split('-').reverse().join('/'));
+                              } else {
+                                setIssueDate('');
+                              }
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            required
+                          />
+                          <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[20px]">
+                            calendar_month
+                          </span>
+                        </div>
                       </div>
                       <div className="flex flex-col gap-xs">
                         <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Validez (Días)</label>
@@ -1911,12 +1934,24 @@ export default function Presupuestos({
                                 Cuota {row.numQuota}
                               </td>
                               <td className="p-1">
-                                <input
-                                  type="date"
-                                  value={row.date}
-                                  onChange={(e) => handleEditRowChange(idx, 'date', e.target.value)}
-                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white"
-                                />
+                                <div className="relative flex items-center w-full">
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={row.date ? row.date.split('-').reverse().join('/') : ''}
+                                    className="w-full border border-slate-200 rounded-lg text-body-sm py-1 px-2 outline-none bg-white pr-7"
+                                    placeholder="dd/mm/yyyy"
+                                  />
+                                  <input
+                                    type="date"
+                                    value={row.date || ''}
+                                    onChange={(e) => handleEditRowChange(idx, 'date', e.target.value)}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                  />
+                                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
+                                    calendar_month
+                                  </span>
+                                </div>
                               </td>
                               <td className="p-1 text-center">
                                 <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
@@ -2323,13 +2358,25 @@ export default function Presupuestos({
                     {/* Fila: Inicio Facturación */}
                     <div className="flex flex-col gap-xs">
                       <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Inicio Facturación</label>
-                      <input
-                        className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-medium"
-                        type="date"
-                        value={fechaInicio}
-                        onChange={(e) => handleFechaInicioChange(e.target.value)}
-                        required
-                      />
+                      <div className="relative flex items-center">
+                        <input
+                          type="text"
+                          readOnly
+                          value={fechaInicio ? fechaInicio.split('-').reverse().join('/') : ''}
+                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 outline-none transition-all bg-white font-medium pr-10"
+                          placeholder="dd/mm/yyyy"
+                        />
+                        <input
+                          type="date"
+                          value={fechaInicio}
+                          onChange={(e) => handleFechaInicioChange(e.target.value)}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                          required
+                        />
+                        <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[20px]">
+                          calendar_month
+                        </span>
+                      </div>
                     </div>
 
                     {/* Descripción del Presupuesto */}
@@ -2449,12 +2496,24 @@ export default function Presupuestos({
                                     />
                                   </td>
                                   <td className="p-1">
-                                    <input
-                                      type="date"
-                                      value={row.date}
-                                      onChange={(e) => handleRowChange(idx, 'date', e.target.value)}
-                                      className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
-                                    />
+                                    <div className="relative flex items-center w-full">
+                                      <input
+                                        type="text"
+                                        readOnly
+                                        value={row.date ? row.date.split('-').reverse().join('/') : ''}
+                                        className="w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6"
+                                        placeholder="dd/mm/yyyy"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={row.date || ''}
+                                        onChange={(e) => handleRowChange(idx, 'date', e.target.value)}
+                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                      />
+                                      <span className="material-symbols-outlined absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
+                                        calendar_month
+                                      </span>
+                                    </div>
                                   </td>
                                   <td className="p-1 w-28">
                                     <input

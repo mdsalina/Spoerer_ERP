@@ -117,3 +117,5 @@ Los presupuestos permiten adjuntar archivos de respaldo.
    * Fondos de modales principales usando `bg-surface` o `bg-surface-container-low`.
    * Bordes redondeados consistentes (`rounded-xl` o `rounded-full` según sea el caso).
    * Evita crear estilos inline extensos; prefiere clases preconfiguradas de Tailwind o variables CSS de [index.css](file:///d:/Programacion/Spoerer_ERP/src/index.css).
+6. **Formato de Fechas:** Por definición de negocio, todas las fechas que se presenten al usuario en la interfaz o que se exporten en reportes (como archivos Excel) deben mostrarse en formato `dd/mm/yyyy` (ej. `15/10/2026`). Al capturar fechas de elementos `<input type="date">` (que usan el estándar nativo `yyyy-mm-dd`), realiza la conversión a `dd/mm/yyyy` al guardar o procesar en el frontend.
+

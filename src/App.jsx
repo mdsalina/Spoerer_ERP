@@ -373,7 +373,13 @@ export default function App() {
           email: newUser.email,
           role: newUser.role || 'Sales',
           status: 'Active',
-          joinedDate: new Date().toLocaleDateString('es-CL'),
+          joinedDate: (() => {
+            const d = new Date();
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+          })(),
           initials: newUser.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
         }]);
       }

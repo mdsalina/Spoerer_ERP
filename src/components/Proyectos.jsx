@@ -689,12 +689,24 @@ export default function Proyectos({
                                         {row.numQuota}
                                       </td>
                                       <td className="p-1.5">
-                                        <input
-                                          type="date"
-                                          value={row.date}
-                                          onChange={(e) => handleRowFieldChange(row.id, 'date', e.target.value)}
-                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
-                                        />
+                                        <div className="relative flex items-center w-full">
+                                          <input
+                                            type="text"
+                                            readOnly
+                                            value={row.date ? row.date.split('-').reverse().join('/') : ''}
+                                            className="w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6"
+                                            placeholder="dd/mm/yyyy"
+                                          />
+                                          <input
+                                            type="date"
+                                            value={row.date || ''}
+                                            onChange={(e) => handleRowFieldChange(row.id, 'date', e.target.value)}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                          />
+                                          <span className="material-symbols-outlined absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
+                                            calendar_month
+                                          </span>
+                                        </div>
                                       </td>
                                       <td className="p-1.5 w-36 text-center">
                                         <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
