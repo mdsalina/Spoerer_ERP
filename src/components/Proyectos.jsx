@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
+import InstallmentsModal from './InstallmentsModal';
 
 export default function Proyectos({
   projects,
@@ -20,6 +21,10 @@ export default function Proyectos({
   setSearchTerm
 }) {
   const [expandedProjectId, setExpandedProjectId] = useState(null);
+
+  // Installments unified modal state
+  const [isInstallmentsModalOpen, setIsInstallmentsModalOpen] = useState(false);
+  const [activeBudgetForInstallments, setActiveBudgetForInstallments] = useState(null);
 
   // Document preview state
   const [previewFile, setPreviewFile] = useState(null);
@@ -676,148 +681,117 @@ export default function Proyectos({
                               <span className="material-symbols-outlined text-[16px]">link_off</span>
                               <span>Desasociar</span>
                             </button>
-                          </div>
-
-                          {/* Billing Table */}
-                          <div className="space-y-sm">
-                            <h5 className="text-body-sm font-bold text-slate-700 flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-[16px] text-slate-500">list_alt</span>
-                              Detalle de Cuotas ({budgetInstallments.length} cuotas)
-                            </h5>
-
-                            <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-sm">
-                              <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-100 text-slate-700 text-label-sm font-bold uppercase sticky top-0">
-                                  <tr>
-                                    <th className="p-2.5 border-b border-slate-200 text-center w-12">Cuota</th>
-                                    <th className="p-2.5 border-b border-slate-200">Fecha Planificada</th>
-                                    <th className="p-2.5 border-b border-slate-200 w-36">Estado</th>
-                                    <th className="p-2.5 border-b border-slate-200 text-right w-28">UF</th>
-                                    <th className="p-2.5 border-b border-slate-200">Comentario / Estado de Hito</th>
-                                    <th className="p-2.5 border-b border-slate-200 text-center w-16">Acción</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="text-body-sm divide-y divide-slate-100">
-                                  {budgetInstallments.map((row) => (
-                                    <tr key={row.id} className="hover:bg-slate-50/40">
-                                      <td className="p-2.5 font-bold text-slate-500 text-center bg-slate-50/50">
-                                        {row.numQuota}
-                                      </td>
-                                      <td className="p-1.5">
-                                        <div className="relative flex items-center w-full">
-                                          <input
-                                            type="text"
-                                            readOnly
-                                            value={row.date ? row.date.split('-').reverse().join('/') : ''}
-                                            className="w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6"
-                                            placeholder="dd/mm/yyyy"
-                                          />
-                                          <input
-                                            type="date"
-                                            value={row.date || ''}
-                                            onChange={(e) => handleRowFieldChange(row.id, 'date', e.target.value)}
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                          />
-                                          <span className="material-symbols-outlined absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
-                                            calendar_month
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td className="p-1.5 w-36 text-center">
-                                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
-                                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
-                                          : (row.status || 'Por facturar') === 'Factura emitida'
-                                            ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
-                                            : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-                                          }`}>
-                                          {row.status || 'Por facturar'}
-                                        </span>
-                                      </td>
-                                      <td className="p-1.5 w-28">
-                                        <input
-                                          type="number"
-                                          value={row.uf}
-                                          onChange={(e) => handleRowFieldChange(row.id, 'uf', e.target.value)}
-                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-right"
-                                          step="0.01"
-                                        />
-                                      </td>
-                                      <td className="p-1.5">
-                                        <input
-                                          type="text"
-                                          value={row.comment || ''}
-                                          onChange={(e) => handleRowFieldChange(row.id, 'comment', e.target.value)}
-                                          placeholder="Agregar comentario..."
-                                          className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
-                                        />
-                                      </td>
-                                      <td className="p-1.5 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteRowLocal(row.id, budget.id)}
-                                          className="p-1 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center mx-auto"
-                                          title="Eliminar cuota"
-                                        >
-                                          <span className="material-symbols-outlined text-[18px]">delete</span>
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-
-                            {/* Verification Total Bar */}
-                            {(() => {
-                              const currentSum = budgetInstallments.reduce((acc, r) => acc + (parseFloat(r.uf) || 0), 0);
-                              const roundedSum = Math.round(currentSum * 100) / 100;
-                              const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
-                              const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
-                              return (
-                                <div className={`mt-3 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${isMatch
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                  : 'bg-amber-50 text-amber-800 border-amber-200'
-                                  }`}>
-                                  <div className="flex flex-wrap gap-x-md gap-y-1">
-                                    <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
-                                    <span className="text-slate-350">/</span>
-                                    <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
-                                  </div>
-                                  <div>
-                                    {isMatch ? (
-                                      <span className="flex items-center gap-1 text-emerald-600">
-                                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                        Montos coinciden
-                                      </span>
-                                    ) : (
-                                      <span className="flex items-center gap-1 text-amber-600">
-                                        <span className="material-symbols-outlined text-[18px]">warning</span>
-                                        Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-
-                            {/* Save Changes & Add Row Buttons */}
-                            <div className="flex justify-between items-center pt-sm">
-                              <button
-                                type="button"
-                                onClick={() => handleAddRowLocal(project.id, budget.id)}
-                                className="px-4 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 text-body-sm font-bold rounded-lg transition-all flex items-center gap-1 shadow-xs"
-                              >
-                                <span className="material-symbols-outlined text-[16px]">add</span>
-                                <span>Agregar Cuota</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveBillingTable(budget.id, budget.amount)}
-                                className="px-4 py-1.5 bg-secondary text-white text-body-sm font-bold rounded-lg hover:brightness-105 transition-all shadow-sm flex items-center gap-1"
-                              >
-                                <span className="material-symbols-outlined text-[16px]">save</span>
-                                <span>Guardar Facturación</span>
-                              </button>
+                            {/* Billing Table */}
+                           <div className="space-y-sm text-slate-800">
+                             <h5 className="text-body-sm font-bold text-slate-700 flex items-center gap-1.5">
+                               <span className="material-symbols-outlined text-[16px] text-slate-500">list_alt</span>
+                               Detalle de Cuotas ({budgetInstallments.length} cuotas)
+                             </h5>
+ 
+                             {budgetInstallments.length > 0 ? (
+                               <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white shadow-sm">
+                                 <table className="w-full text-left border-collapse">
+                                   <thead className="bg-slate-100 text-slate-700 text-label-sm font-bold uppercase sticky top-0">
+                                     <tr>
+                                       <th className="p-2.5 border-b border-slate-200 text-center w-12">Cuota</th>
+                                       <th className="p-2.5 border-b border-slate-200">Fecha Planificada</th>
+                                       <th className="p-2.5 border-b border-slate-200 w-36 text-center">Estado</th>
+                                       <th className="p-2.5 border-b border-slate-200 text-right w-28">UF</th>
+                                       <th className="p-2.5 border-b border-slate-200">Comentario / Estado de Hito</th>
+                                     </tr>
+                                   </thead>
+                                   <tbody className="text-body-sm divide-y divide-slate-100">
+                                     {budgetInstallments.map((row) => (
+                                       <tr key={row.id} className="hover:bg-slate-50/40 text-slate-700">
+                                         <td className="p-2.5 font-bold text-slate-500 text-center bg-slate-50/50">
+                                           {row.numQuota}
+                                         </td>
+                                         <td className="p-2.5 text-on-surface">
+                                           <div className="flex items-center gap-1">
+                                             <span>{row.date ? row.date.split('-').reverse().join('/') : ''}</span>
+                                             {row.dateConfirmed && (
+                                               <span className="material-symbols-outlined text-[16px] text-emerald-600 font-bold" title="Fecha Confirmada">
+                                                 verified
+                                               </span>
+                                             )}
+                                           </div>
+                                         </td>
+                                         <td className="p-2.5 w-36 text-center">
+                                           <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
+                                             ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
+                                             : (row.status || 'Por facturar') === 'Factura emitida'
+                                               ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
+                                               : 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                                             }`}>
+                                             {row.status || 'Por facturar'}
+                                           </span>
+                                         </td>
+                                         <td className="p-2.5 w-28 text-right font-bold text-primary">
+                                           {row.uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
+                                         </td>
+                                         <td className="p-2.5 text-on-surface-variant italic">
+                                           {row.comment || '-'}
+                                         </td>
+                                       </tr>
+                                     ))}
+                                   </tbody>
+                                 </table>
+                               </div>
+                             ) : (
+                               <p className="text-body-sm text-slate-500 italic py-2">No hay cuotas registradas para este presupuesto.</p>
+                             )}
+ 
+                             {/* Verification Total Bar */}
+                             {budgetInstallments.length > 0 && (() => {
+                               const currentSum = budgetInstallments.reduce((acc, r) => acc + (parseFloat(r.uf) || 0), 0);
+                               const roundedSum = Math.round(currentSum * 100) / 100;
+                               const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
+                               const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
+                               return (
+                                 <div className={`p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${isMatch
+                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                   : 'bg-amber-50 text-amber-800 border-amber-200'
+                                   }`}>
+                                   <div className="flex flex-wrap gap-x-md gap-y-1">
+                                     <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
+                                     <span className="text-slate-350">/</span>
+                                     <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
+                                   </div>
+                                   <div>
+                                     {isMatch ? (
+                                       <span className="flex items-center gap-1 text-emerald-600">
+                                         <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                                         Montos coinciden
+                                       </span>
+                                     ) : (
+                                       <span className="flex items-center gap-1 text-amber-600">
+                                         <span className="material-symbols-outlined text-[18px]">warning</span>
+                                         Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
+                                       </span>
+                                     )}
+                                   </div>
+                                 </div>
+                               );
+                             })()}
+ 
+                             {/* Edit Installments Trigger Button */}
+                             <div className="flex justify-end pt-xs">
+                               <button
+                                 type="button"
+                                 onClick={() => {
+                                   setActiveBudgetForInstallments({
+                                     budget: budget,
+                                     installments: budgetInstallments,
+                                     project: project
+                                   });
+                                   setIsInstallmentsModalOpen(true);
+                                 }}
+                                 className="px-4 py-1.5 bg-primary text-white text-body-sm font-bold rounded-lg hover:bg-primary-container transition-all shadow-sm flex items-center gap-1.5 active:scale-95"
+                               >
+                                 <span className="material-symbols-outlined text-[16px]">edit_calendar</span>
+                                 <span>Editar Cuotas</span>
+                               </button>
+                             </div>
                             </div>
                           </div>
                         </div>
@@ -1285,6 +1259,27 @@ export default function Proyectos({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Unified Installments Modal */}
+      {isInstallmentsModalOpen && activeBudgetForInstallments && (
+        <InstallmentsModal
+          isOpen={isInstallmentsModalOpen}
+          onClose={() => {
+            setIsInstallmentsModalOpen(false);
+            setActiveBudgetForInstallments(null);
+          }}
+          projectName={`${activeBudgetForInstallments.project.projectNumber} - ${activeBudgetForInstallments.project.rawProjectName}`}
+          budgetNumber={activeBudgetForInstallments.budget.quoteId}
+          budgetAmount={activeBudgetForInstallments.budget.amount}
+          budgetBackupFiles={activeBudgetForInstallments.budget.backupFiles}
+          initialInstallments={activeBudgetForInstallments.installments}
+          onSave={async (updated) => {
+            await onSaveInstallments(activeBudgetForInstallments.budget.id, updated);
+          }}
+          projectNumber={activeBudgetForInstallments.project.projectNumber}
+          isDeferredSave={false}
+        />
       )}
     </div>
   );

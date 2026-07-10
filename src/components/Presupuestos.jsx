@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mammoth from 'mammoth';
+import InstallmentsModal from './InstallmentsModal';
 
 // Helper to parse date strings of format DD/MM/YYYY or YYYY-MM-DD to Date object
 const parseDate = (dateStr) => {
@@ -133,6 +134,7 @@ export default function Presupuestos({
 
   // Project Approval modal states
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+  const [isInstallmentsModalOpen, setIsInstallmentsModalOpen] = useState(false);
   const [approvingQuote, setApprovingQuote] = useState(null);
   const [projectName, setProjectName] = useState('');
   const [superficie, setSuperficie] = useState('');
@@ -1530,7 +1532,14 @@ export default function Presupuestos({
                                 <tr key={idx} className="hover:bg-slate-50">
                                   <td className="p-md font-bold text-primary">Cuota {cuota.numQuota}</td>
                                   <td className="p-md text-on-surface">
-                                    {cuota.date ? cuota.date.split('-').reverse().join('/') : '-'}
+                                    <div className="flex items-center gap-1">
+                                      <span>{cuota.date ? cuota.date.split('-').reverse().join('/') : '-'}</span>
+                                      {cuota.dateConfirmed && (
+                                        <span className="material-symbols-outlined text-[16px] text-emerald-600 font-bold" title="Fecha Confirmada">
+                                          verified
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className="p-md">
                                     <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${cuota.status === 'Pagada'
@@ -1886,11 +1895,11 @@ export default function Presupuestos({
                     </h3>
                     <button
                       type="button"
-                      onClick={handleAddEditRow}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-white rounded text-body-sm hover:brightness-110 transition-all font-semibold active:scale-95 shadow-sm"
+                      onClick={() => setIsInstallmentsModalOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white rounded text-body-sm hover:bg-primary-container transition-all font-semibold active:scale-95 shadow-sm"
                     >
-                      <span className="material-symbols-outlined text-[16px]">add</span>
-                      <span>Agregar Cuota</span>
+                      <span className="material-symbols-outlined text-[16px]">edit_calendar</span>
+                      <span>Editar Cuotas</span>
                     </button>
                   </div>
 
@@ -1917,44 +1926,33 @@ export default function Presupuestos({
                   {editBillingTable.length > 0 ? (
                     <div className="border rounded-xl overflow-hidden shadow-sm max-h-[300px] overflow-y-auto custom-scrollbar bg-white">
                       <table className="w-full text-left border-collapse">
-                        <thead className="bg-slate-50 border-b sticky top-0 z-10">
+                        <thead className="bg-slate-50 border-b sticky top-0 z-10 font-semibold text-on-surface-variant">
                           <tr>
-                            <th className="p-2 border-b border-slate-200 text-center w-24 font-semibold text-on-surface-variant">N° Cuota</th>
-                            <th className="p-2 border-b border-slate-200 w-40 font-semibold text-on-surface-variant">Fecha de Cobro</th>
-                            <th className="p-2 border-b border-slate-200 w-40 font-semibold text-on-surface-variant">Estado</th>
+                            <th className="p-2 border-b border-slate-200 text-center w-24">N° Cuota</th>
+                            <th className="p-2 border-b border-slate-200 w-40">Fecha de Cobro</th>
+                            <th className="p-2 border-b border-slate-200 w-40">Estado</th>
                             <th className="p-2 border-b border-slate-200 text-right w-32 font-semibold text-on-surface-variant">Monto (UF)</th>
                             <th className="p-2 border-b border-slate-200 font-semibold text-on-surface-variant">Comentario / Descripción</th>
-                            <th className="p-2 border-b border-slate-200 text-center w-16 font-semibold text-on-surface-variant">Acción</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 text-body-sm">
+                        <tbody className="divide-y divide-slate-100 text-body-sm text-slate-700">
                           {editBillingTable.map((row, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50/50">
-                              <td className="p-2 text-center font-bold text-primary">
+                            <tr key={idx} className="hover:bg-slate-50/50 text-slate-700">
+                              <td className="p-2 text-center font-bold text-primary bg-slate-50/50">
                                 Cuota {row.numQuota}
                               </td>
-                              <td className="p-1">
-                                <div className="relative flex items-center w-full">
-                                  <input
-                                    type="text"
-                                    readOnly
-                                    value={row.date ? row.date.split('-').reverse().join('/') : ''}
-                                    className="w-full border border-slate-200 rounded-lg text-body-sm py-1 px-2 outline-none bg-white pr-7"
-                                    placeholder="dd/mm/yyyy"
-                                  />
-                                  <input
-                                    type="date"
-                                    value={row.date || ''}
-                                    onChange={(e) => handleEditRowChange(idx, 'date', e.target.value)}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                  />
-                                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
-                                    calendar_month
-                                  </span>
+                              <td className="p-2 text-on-surface">
+                                <div className="flex items-center gap-1">
+                                  <span>{row.date ? row.date.split('-').reverse().join('/') : '-'}</span>
+                                  {row.dateConfirmed && (
+                                    <span className="material-symbols-outlined text-[16px] text-emerald-600 font-bold" title="Fecha Confirmada">
+                                      verified
+                                    </span>
+                                  )}
                                 </div>
                               </td>
-                              <td className="p-1 text-center">
-                                <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
+                              <td className="p-2 text-center">
+                                <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
                                     ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
                                     : (row.status || 'Por facturar') === 'Factura emitida'
                                       ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
@@ -1963,33 +1961,11 @@ export default function Presupuestos({
                                   {row.status || 'Por facturar'}
                                 </span>
                               </td>
-                              <td className="p-1">
-                                <input
-                                  type="number"
-                                  value={row.uf}
-                                  onChange={(e) => handleEditRowChange(idx, 'uf', e.target.value)}
-                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white text-right font-semibold"
-                                  step="0.01"
-                                />
+                              <td className="p-2 text-right font-semibold text-primary">
+                                {row.uf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
                               </td>
-                              <td className="p-1">
-                                <input
-                                  type="text"
-                                  value={row.comment || ''}
-                                  onChange={(e) => handleEditRowChange(idx, 'comment', e.target.value)}
-                                  placeholder="Ej: Mensualidad o Anticipo"
-                                  className="w-full border-slate-200 rounded-lg text-body-sm py-1 px-2 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none bg-white"
-                                />
-                              </td>
-                              <td className="p-1 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveEditRow(idx)}
-                                  className="p-1 hover:bg-red-50 rounded text-error hover:text-red-600 transition-all flex items-center justify-center mx-auto"
-                                  title="Eliminar cuota"
-                                >
-                                  <span className="material-symbols-outlined text-[18px]">delete</span>
-                                </button>
+                              <td className="p-2 text-on-surface-variant italic">
+                                {row.comment || 'Facturación ordinaria'}
                               </td>
                             </tr>
                           ))}
@@ -1998,7 +1974,7 @@ export default function Presupuestos({
                     </div>
                   ) : (
                     <div className="p-md text-center text-on-surface-variant italic bg-slate-50 border border-dashed rounded-lg">
-                      No hay cuotas definidas. Haz clic en "Agregar Cuota" para registrar cobros.
+                      No hay cuotas definidas. Haz clic en "Editar Cuotas" para registrar cobros.
                     </div>
                   )}
                 </div>
@@ -2788,6 +2764,27 @@ export default function Presupuestos({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Unified Installments Modal */}
+      {isInstallmentsModalOpen && (
+        <InstallmentsModal
+          isOpen={isInstallmentsModalOpen}
+          onClose={() => setIsInstallmentsModalOpen(false)}
+          projectName={existingQuoteObj?.projectId ? (() => {
+            const assoc = projects.find(p => p.id === existingQuoteObj.projectId);
+            return assoc ? `${assoc.projectNumber} - ${assoc.rawProjectName}` : quoteTitle;
+          })() : quoteTitle}
+          budgetNumber={quoteId}
+          budgetAmount={parseFloat(subtotal) || 0}
+          budgetBackupFiles={backupFiles}
+          initialInstallments={editBillingTable}
+          onSave={async (updated) => {
+            setEditBillingTable(updated);
+          }}
+          projectNumber={existingQuoteObj?.projectId ? projects.find(p => p.id === existingQuoteObj.projectId)?.projectNumber || 'SPR' : 'SPR'}
+          isDeferredSave={true}
+        />
       )}
     </div>
   );

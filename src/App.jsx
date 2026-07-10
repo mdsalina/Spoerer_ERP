@@ -290,7 +290,12 @@ export default function App() {
             date: inst.date,
             status: inst.status,
             uf: inst.uf,
-            comment: inst.comment
+            comment: inst.comment,
+            dateConfirmed: inst.dateConfirmed,
+            invoiceFileUrl: inst.invoiceFileUrl,
+            paymentBackupUrl: inst.paymentBackupUrl,
+            invoiceNumber: inst.invoiceNumber,
+            actualPaymentDate: inst.actualPaymentDate
           })
         ));
       }
@@ -305,7 +310,12 @@ export default function App() {
             date: inst.date,
             uf: inst.uf,
             status: inst.status,
-            comment: inst.comment
+            comment: inst.comment,
+            dateConfirmed: inst.dateConfirmed,
+            invoiceFileUrl: inst.invoiceFileUrl,
+            paymentBackupUrl: inst.paymentBackupUrl,
+            invoiceNumber: inst.invoiceNumber,
+            actualPaymentDate: inst.actualPaymentDate
           })
         ));
       }
@@ -485,6 +495,7 @@ export default function App() {
               installments={installments}
               clients={clients}
               onUpdateInstallment={handleUpdateInstallment}
+              onSaveInstallments={handleSaveInstallments}
               temporalFilter={facturacionTemporalFilter}
               setTemporalFilter={setFacturacionTemporalFilter}
               statusFilter={facturacionStatusFilter}

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import * as XLSX from 'xlsx';
+import InstallmentsModal from './InstallmentsModal';
 
 export default function Facturacion({
   projects,
@@ -8,6 +9,7 @@ export default function Facturacion({
   installments,
   clients,
   onUpdateInstallment,
+  onSaveInstallments,
   temporalFilter,
   setTemporalFilter,
   statusFilter,
@@ -28,6 +30,10 @@ export default function Facturacion({
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedInstallment, setSelectedInstallment] = useState(null);
+
+  // Installments unified modal state
+  const [isInstallmentsModalOpen, setIsInstallmentsModalOpen] = useState(false);
+  const [activeBudgetForInstallments, setActiveBudgetForInstallments] = useState(null);
 
   // --- FORM STATES ---
   const [isSaving, setIsSaving] = useState(false);
@@ -811,14 +817,31 @@ export default function Facturacion({
                       return (
                         <div key={bId} className="pt-md first:pt-0 space-y-sm">
                           {/* Presupuesto Header */}
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs border-b border-outline-variant/10 pb-2">
+                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-xs border-b border-outline-variant/10 pb-2 text-slate-800">
                             <span className="text-body-md text-primary font-bold flex items-center gap-xs">
                               <span className="material-symbols-outlined text-[18px] text-outline">description</span>
                               {title}
                             </span>
-                            <span className="text-body-sm text-on-surface-variant">
-                              Monto Presupuestado: <strong className="font-semibold">{formatCLP(amount)}</strong>
-                            </span>
+                            <div className="flex items-center gap-sm flex-wrap">
+                              <span className="text-body-sm text-on-surface-variant font-medium">
+                                Monto Presupuestado: <strong className="font-semibold text-slate-700">{formatCLP(amount)}</strong>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveBudgetForInstallments({
+                                    budget: budget,
+                                    installments: budgetInstallments,
+                                    project: project
+                                  });
+                                  setIsInstallmentsModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 border border-primary text-primary hover:bg-primary hover:text-white rounded text-xs font-semibold transition-all active:scale-95 shadow-xs"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">edit_calendar</span>
+                                <span>Editar Cuotas</span>
+                              </button>
+                            </div>
                           </div>
 
                           {/* Nivel 3: Tabla de Cuotas */}
@@ -847,7 +870,14 @@ export default function Facturacion({
                                         {inst.numQuota ? `${inst.numQuota.toString().padStart(2, '0')}/${totalQuotas.toString().padStart(2, '0')}` : '-'}
                                       </td>
                                       <td className={`px-md py-md ${isOverdue ? 'text-red-600 font-semibold' : 'text-on-surface-variant'}`}>
-                                        {formatDate(inst.date)}
+                                        <div className="flex items-center gap-1">
+                                          <span>{formatDate(inst.date)}</span>
+                                          {inst.dateConfirmed && (
+                                            <span className="material-symbols-outlined text-[15px] text-emerald-600 font-bold" title="Fecha Confirmada">
+                                              verified
+                                            </span>
+                                          )}
+                                        </div>
                                       </td>
                                       <td className={`px-md py-md text-right font-semibold ${isOverdue ? 'text-red-600' : 'text-primary'}`}>
                                         {formatUF(inst.uf)}
@@ -1427,6 +1457,27 @@ export default function Facturacion({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Unified Installments Modal */}
+      {isInstallmentsModalOpen && activeBudgetForInstallments && (
+        <InstallmentsModal
+          isOpen={isInstallmentsModalOpen}
+          onClose={() => {
+            setIsInstallmentsModalOpen(false);
+            setActiveBudgetForInstallments(null);
+          }}
+          projectName={`${activeBudgetForInstallments.project.projectNumber} - ${activeBudgetForInstallments.project.rawProjectName}`}
+          budgetNumber={activeBudgetForInstallments.budget.quoteId}
+          budgetAmount={activeBudgetForInstallments.budget.amount}
+          budgetBackupFiles={activeBudgetForInstallments.budget.backupFiles}
+          initialInstallments={activeBudgetForInstallments.installments}
+          onSave={async (updated) => {
+            await onSaveInstallments(activeBudgetForInstallments.budget.id, updated);
+          }}
+          projectNumber={activeBudgetForInstallments.project.projectNumber}
+          isDeferredSave={false}
+        />
       )}
     </div>
   );

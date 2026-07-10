@@ -104,7 +104,8 @@ const mapInstallmentFromDb = (dbInst) => ({
   invoiceFileUrl: dbInst.invoice_file_url || '',
   actualPaymentDate: dbInst.actual_payment_date || null,
   paymentBackupUrl: dbInst.payment_backup_url || '',
-  comment: dbInst.comment || ''
+  comment: dbInst.comment || '',
+  dateConfirmed: dbInst.date_confirmed || false
 });
 
 // Helper: Map extra costs fields
@@ -395,7 +396,16 @@ export const supabaseService = {
             scheduled_date: inst.date,
             planned_amount_uf: parseFloat(inst.uf) || 0,
             comment: inst.comment || '',
-            status: mapInstallmentStatusToDb(inst.status || 'Por facturar')
+            status: mapInstallmentStatusToDb(inst.status || 'Por facturar'),
+            date_confirmed: inst.dateConfirmed || false,
+            invoice_number: inst.invoiceNumber || null,
+            invoice_file_url: inst.invoiceFileUrl || null,
+            actual_invoice_date: inst.actualInvoiceDate || null,
+            actual_payment_date: inst.actualPaymentDate || null,
+            payment_backup_url: inst.paymentBackupUrl || null,
+            net_amount_clp: inst.net_clp || null,
+            tax_amount_clp: inst.tax_clp || null,
+            total_amount_clp: inst.total_clp || null
           }));
 
           const { error: insError } = await supabase
@@ -582,6 +592,7 @@ export const supabaseService = {
     if (updates.status !== undefined) dbUpdates.status = mapInstallmentStatusToDb(updates.status);
     if (updates.uf !== undefined) dbUpdates.planned_amount_uf = parseFloat(updates.uf) || 0;
     if (updates.comment !== undefined) dbUpdates.comment = updates.comment;
+    if (updates.dateConfirmed !== undefined) dbUpdates.date_confirmed = updates.dateConfirmed;
     
     // Financial details
     if (updates.actualInvoiceDate !== undefined) dbUpdates.actual_invoice_date = updates.actualInvoiceDate;
@@ -613,7 +624,16 @@ export const supabaseService = {
       scheduled_date: installment.date,
       planned_amount_uf: parseFloat(installment.uf) || 0,
       status: mapInstallmentStatusToDb(installment.status || 'Por facturar'),
-      comment: installment.comment || ''
+      comment: installment.comment || '',
+      date_confirmed: installment.dateConfirmed || false,
+      invoice_number: installment.invoiceNumber || null,
+      invoice_file_url: installment.invoiceFileUrl || null,
+      actual_invoice_date: installment.actualInvoiceDate || null,
+      actual_payment_date: installment.actualPaymentDate || null,
+      payment_backup_url: installment.paymentBackupUrl || null,
+      net_amount_clp: installment.net_clp || null,
+      tax_amount_clp: installment.tax_clp || null,
+      total_amount_clp: installment.total_clp || null
     };
 
     const { data, error } = await supabase
@@ -724,7 +744,8 @@ export const supabaseService = {
         installment_number: inst.numQuota,
         scheduled_date: inst.date,
         planned_amount_uf: parseFloat(inst.uf) || 0,
-        status: 'Por facturar'
+        status: 'Por facturar',
+        date_confirmed: inst.dateConfirmed || false
       }));
 
       const { error: instError } = await supabase
@@ -823,5 +844,27 @@ export const supabaseService = {
     });
     if (error) throw error;
     return userId;
+  },
+
+  async uploadInstallmentFile(folder, projectNumber, file) {
+    if (!file) return '';
+    const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${folder}/${projectNumber}/${Date.now()}_${cleanName}`;
+    const { data, error } = await supabase.storage.from('budgets').upload(path, file);
+    if (error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('budgets').getPublicUrl(path);
+    return publicUrl;
+  },
+
+  async deleteInstallmentFile(pathOrUrl) {
+    if (!pathOrUrl) return;
+    let path = pathOrUrl;
+    if (pathOrUrl.includes('/public/budgets/')) {
+      path = pathOrUrl.split('/public/budgets/')[1];
+    }
+    const { error } = await supabase.storage.from('budgets').remove([path]);
+    if (error) {
+      console.error(`Error deleting file at path ${path}:`, error);
+    }
   }
 };
