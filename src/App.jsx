@@ -439,6 +439,7 @@ export default function App() {
               projects={projects}
               onApproveBudgetAndCreateProject={handleApproveBudgetAndCreateProject}
               installments={installments}
+              users={users}
             />
           )}
           {currentTab === 'facturacion' && (

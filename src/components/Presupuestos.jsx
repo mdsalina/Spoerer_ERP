@@ -34,7 +34,7 @@ const isQuoteInPeriod = (quote, period) => {
   return quoteDate >= cutoffDate;
 };
 
-export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onApproveBudgetAndCreateProject, installments }) {
+export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onApproveBudgetAndCreateProject, installments, users = [] }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -114,6 +114,45 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
   const [prefilledFromProjectId, setPrefilledFromProjectId] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef(null);
+
+  // Reviewers modal states
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewingQuote, setReviewingQuote] = useState(null);
+  const [selectedReviewers, setSelectedReviewers] = useState([]);
+  const [selectedReviewerId, setSelectedReviewerId] = useState('');
+
+  const handleAddReviewer = () => {
+    if (!selectedReviewerId) return;
+    const reviewer = users.find(u => u.id === selectedReviewerId);
+    if (reviewer && !selectedReviewers.some(r => r.id === reviewer.id)) {
+      setSelectedReviewers(prev => [...prev, reviewer]);
+      setSelectedReviewerId('');
+    }
+  };
+
+  const handleRemoveReviewer = (id) => {
+    setSelectedReviewers(prev => prev.filter(r => r.id !== id));
+  };
+
+  const handleCloseReviewModal = () => {
+    setIsReviewModalOpen(false);
+    setReviewingQuote(null);
+    setSelectedReviewers([]);
+    setSelectedReviewerId('');
+  };
+
+  const handleConfirmReview = async () => {
+    if (!reviewingQuote) return;
+    try {
+      await onAddQuote({
+        ...reviewingQuote,
+        status: 'En revisión'
+      });
+      handleCloseReviewModal();
+    } catch (error) {
+      console.error("Error al pasar presupuesto a revisión:", error);
+    }
+  };
 
   const filteredProjects = projects && projectName
     ? projects.filter(p => p.projectName.toLowerCase().includes(projectName.toLowerCase()))
@@ -478,6 +517,15 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       if (quote.status === 'Aprobado' || quote.status === 'Aprovado') {
         alert('Por razones de seguridad, no se puede cambiar el estado de un presupuesto que ya está aprobado.');
         return;
+      }
+      if (newStatus === 'En revisión') {
+        if (quote.status === 'Borrador') {
+          setReviewingQuote(quote);
+          setSelectedReviewers([]);
+          setSelectedReviewerId('');
+          setIsReviewModalOpen(true);
+          return;
+        }
       }
       if (newStatus === 'Aprobado') {
         setApprovingQuote(quote);
@@ -988,6 +1036,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     .filter(q => q.status === 'Rechazado').length;
 
   const existingQuoteObj = quotes.find(q => q.quoteId === quoteId || q.quoteId === quoteId.padStart(4, '0') || q.id === currentBudgetUuid);
+
+  const availableUsersToSelect = (users || [])
+    .filter(u => u.status === 'Active')
+    .filter(u => !selectedReviewers.some(r => r.id === u.id));
 
   return (
     <div className="space-y-xl animate-fade-in text-left">
@@ -2474,6 +2526,129 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Backdrop: Review Selection */}
+      {isReviewModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm">
+          <div className="relative bg-white w-full max-w-md overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
+            
+            {/* Header */}
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Asignar Revisores</h2>
+                <p className="text-body-md text-on-surface-variant flex items-center gap-1 mt-0.5">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span>Presupuesto #{reviewingQuote?.quoteId?.padStart(4, '0')}</span>
+                </p>
+              </div>
+              <button
+                onClick={handleCloseReviewModal}
+                className="p-2 hover:bg-slate-100 rounded-full transition-all"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-lg space-y-lg text-left">
+              
+              {/* Dropdown Select + Add Button */}
+              <div className="flex flex-col gap-xs">
+                <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
+                  Seleccionar Revisor
+                </label>
+                <div className="flex gap-sm items-end">
+                  <div className="flex-grow">
+                    <select
+                      value={selectedReviewerId}
+                      onChange={(e) => setSelectedReviewerId(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white"
+                    >
+                      <option value="">-- Seleccionar usuario --</option>
+                      {availableUsersToSelect.map(u => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddReviewer}
+                    disabled={!selectedReviewerId}
+                    className="px-md py-2 bg-primary text-white font-bold rounded-lg hover:brightness-110 active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-primary/10 h-[42px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    <span>Agregar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Selected Reviewers List */}
+              <div className="flex flex-col gap-xs">
+                <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
+                  Revisores Seleccionados
+                </label>
+                {selectedReviewers.length > 0 ? (
+                  <div className="border border-slate-200 rounded-lg p-md bg-slate-50/50 max-h-[220px] overflow-y-auto space-y-2">
+                    {selectedReviewers.map(reviewer => (
+                      <div key={reviewer.id} className="flex justify-between items-center bg-white border border-slate-200/60 rounded-lg p-sm shadow-sm animate-scale-up">
+                        <div className="flex items-center gap-sm">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-body-sm">
+                            {reviewer.initials || reviewer.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="font-bold text-body-md block text-slate-800 leading-tight">{reviewer.name}</span>
+                            <span className="text-[12px] text-on-surface-variant/80">{reviewer.email}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveReviewer(reviewer.id)}
+                          className="p-1.5 hover:bg-red-50 rounded-full text-error hover:text-red-600 transition-all flex items-center justify-center border border-transparent"
+                          title="Eliminar revisor"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-lg text-center text-on-surface-variant italic bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                    No hay revisores seleccionados. Debe agregar al menos un usuario para poder enviar a revisión.
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-lg border-t border-outline-variant flex justify-end gap-md bg-surface sticky bottom-0">
+              <button
+                type="button"
+                onClick={handleCloseReviewModal}
+                className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReview}
+                disabled={selectedReviewers.length === 0}
+                className={`px-lg py-2 bg-secondary text-white rounded font-bold shadow-lg shadow-secondary/20 transition-all flex items-center gap-2 ${
+                  selectedReviewers.length === 0 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:brightness-110 active:scale-95'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">send</span>
+                <span>Enviar</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}

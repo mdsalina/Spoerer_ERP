@@ -11,6 +11,7 @@ const mapClientFromDb = (dbClient) => ({
   id: dbClient.id,
   rut: dbClient.rut,
   company: dbClient.company_name,
+  realClient: dbClient.real_client,
   giro: dbClient.giro,
   address: dbClient.address,
   comuna: dbClient.comuna,
@@ -26,6 +27,7 @@ const mapClientFromDb = (dbClient) => ({
 const mapClientToDb = (client) => ({
   rut: client.rut,
   company_name: client.company,
+  real_client: client.realClient,
   giro: client.giro,
   address: client.address,
   comuna: client.comuna,

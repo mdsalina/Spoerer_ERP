@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 
-export default function Proyectos({ 
-  projects, 
-  setProjects, 
+export default function Proyectos({
+  projects,
+  setProjects,
   clients,
   budgets,
   installments,
@@ -18,7 +19,7 @@ export default function Proyectos({
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedProjectId, setExpandedProjectId] = useState(null);
-  
+
   // Document preview state
   const [previewFile, setPreviewFile] = useState(null);
   const [docxHtml, setDocxHtml] = useState('');
@@ -87,14 +88,14 @@ export default function Proyectos({
 
   // Calculate KPIs using flat arrays
   const totalProjects = projects.length;
-  
+
   const totalUF = projects.reduce((acc, p) => {
     const projectBudgets = budgets.filter(b => b.projectId === p.id);
     const budgetSum = projectBudgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
     return acc + budgetSum;
   }, 0);
 
-  const avgProfitability = projects.length > 0 
+  const avgProfitability = projects.length > 0
     ? (projects.reduce((acc, p) => acc + (parseFloat(p.rentabilidad) || 0), 0) / projects.length).toFixed(1)
     : 0;
 
@@ -154,7 +155,7 @@ export default function Proyectos({
     const currentSum = budgetInsts.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
     const roundedSum = Math.round(currentSum * 100) / 100;
     const expectedTotal = Math.round((parseFloat(budgetAmount) || 0) * 100) / 100;
-    
+
     if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
       alert(`Error al guardar: La suma de las cuotas (${roundedSum.toFixed(2)} UF) no es igual al total requerido del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
       return;
@@ -260,6 +261,82 @@ export default function Proyectos({
     onDeleteProject(id);
   };
 
+  // Export Budgets and Extra Costs to Excel
+  const handleExportBudgets = () => {
+    const rows = [];
+
+    filteredProjects.forEach(project => {
+      const projectBudgets = budgets.filter(b => b.projectId === project.id);
+      const projectExtraCosts = extraCosts.filter(c => c.project_id === project.id);
+
+      // 1. Budget rows
+      projectBudgets.forEach(budget => {
+        rows.push({
+          "Código de presupuesto": budget.quoteId || '',
+          "Proyecto": `${project.projectNumber || ''}-${project.rawProjectName || ''}${project.cliente ? ` - ${project.cliente}` : ''}`,
+          "Presupuesto (UF)": parseFloat(budget.amount) || 0,
+          "Costo Extra (UF)": '',
+          "Descripción": budget.title || '',
+          "Comentario": '',
+          "m2": parseFloat(project.superficie) || 0,
+          "Rentabilidad esperada": (project.rentabilidad !== undefined && project.rentabilidad !== null) ? `${project.rentabilidad}%` : '',
+          "Factura": '',
+          "Facturado": ''
+        });
+      });
+
+      // 2. Extra cost rows
+      projectExtraCosts.forEach(cost => {
+        rows.push({
+          "Código de presupuesto": '',
+          "Proyecto": `${project.projectNumber || ''}-${project.rawProjectName || ''}${project.cliente ? ` - ${project.cliente}` : ''}`,
+          "Presupuesto (UF)": '',
+          "Costo Extra (UF)": parseFloat(cost.amount) || 0,
+          "Descripción": cost.comment || '',
+          "Comentario": '',
+          "m2": parseFloat(cost.superficie) || 0,
+          "Rentabilidad esperada": '',
+          "Factura": '',
+          "Facturado": ''
+        });
+      });
+    });
+
+    // Create Worksheet and Workbook
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: [
+        "Código de presupuesto",
+        "Proyecto",
+        "Presupuesto (UF)",
+        "Costo Extra (UF)",
+        "Descripción",
+        "Comentario",
+        "m2",
+        "Rentabilidad esperada",
+        "Factura",
+        "Facturado"
+      ]
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Presupuestos y Costos");
+
+    // Auto-fit columns
+    const max_len = {};
+    rows.forEach(row => {
+      Object.keys(row).forEach(key => {
+        const val = String(row[key]);
+        max_len[key] = Math.max(max_len[key] || key.length, val.length);
+      });
+    });
+    worksheet["!cols"] = Object.keys(max_len).map(key => ({
+      wch: Math.min(max_len[key] + 3, 50)
+    }));
+
+    // Trigger download
+    XLSX.writeFile(workbook, "Reporte_Presupuestos_y_Costos.xlsx");
+  };
+
   return (
     <div className="space-y-xl animate-fade-in text-left">
       {/* Header */}
@@ -269,6 +346,15 @@ export default function Proyectos({
           <p className="text-on-surface-variant font-body-md mt-1">
             Supervisa el estado físico, rentabilidad y cronograma de facturación de los proyectos activos.
           </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleExportBudgets}
+            className="flex items-center gap-2 px-md py-2 bg-secondary text-white rounded hover:brightness-105 transition-all font-label-md font-bold active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[16px]">file_download</span>
+            <span>Exportar Presupuestos</span>
+          </button>
         </div>
       </div>
 
@@ -333,16 +419,16 @@ export default function Proyectos({
           <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Proyecto</label>
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-            <input 
-              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none" 
-              placeholder="Buscar por código, nombre o cliente..." 
-              type="text" 
+            <input
+              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none"
+              placeholder="Buscar por código, nombre o cliente..."
+              type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
-        <button 
+        <button
           onClick={() => setSearchTerm('')}
           className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
         >
@@ -356,18 +442,18 @@ export default function Proyectos({
         {filteredProjects.length > 0 ? (
           filteredProjects.map((project) => {
             const isExpanded = expandedProjectId === project.id;
-            
+
             // Filter budgets associated with this project
             const projectBudgets = budgets.filter(b => b.projectId === project.id);
             const projectTotalUF = projectBudgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
-            
+
             // Filter extra costs associated with this project
             const projectExtraCosts = extraCosts.filter(ec => ec.project_id === project.id);
             const projectExtraCostsUF = projectExtraCosts.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
 
             return (
-              <div 
-                key={project.id} 
+              <div
+                key={project.id}
                 className="bg-white rounded-xl border border-outline-variant/40 shadow-sm overflow-hidden transition-all hover:shadow"
               >
                 {/* Project Summary Header */}
@@ -434,9 +520,8 @@ export default function Proyectos({
                       </button>
                       <button
                         onClick={() => toggleExpand(project.id)}
-                        className={`p-2 hover:bg-slate-100 rounded text-secondary transition-all flex items-center gap-1 font-bold text-body-sm ${
-                          isExpanded ? 'bg-slate-100' : ''
-                        }`}
+                        className={`p-2 hover:bg-slate-100 rounded text-secondary transition-all flex items-center gap-1 font-bold text-body-sm ${isExpanded ? 'bg-slate-100' : ''
+                          }`}
                       >
                         <span>{isExpanded ? 'Colapsar' : 'Facturación'}</span>
                         <span className={`material-symbols-outlined transition-all ${isExpanded ? 'rotate-180' : ''}`}>
@@ -507,7 +592,7 @@ export default function Proyectos({
                                 <strong>Monto total:</strong> {budget.amount} UF ({budget.validity})
                               </p>
                             </div>
-                            
+
                             <button
                               type="button"
                               onClick={() => handleDisassociateBudgetLocal(budget.id)}
@@ -553,13 +638,12 @@ export default function Proyectos({
                                         />
                                       </td>
                                       <td className="p-1.5 w-36 text-center">
-                                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
-                                          (row.status || 'Por facturar') === 'Pagada'
-                                            ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
-                                            : (row.status || 'Por facturar') === 'Factura emitida'
-                                              ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
-                                              : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-                                        }`}>
+                                        <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
+                                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
+                                          : (row.status || 'Por facturar') === 'Factura emitida'
+                                            ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
+                                            : 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                                          }`}>
                                           {row.status || 'Por facturar'}
                                         </span>
                                       </td>
@@ -604,11 +688,10 @@ export default function Proyectos({
                               const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
                               const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
                               return (
-                                <div className={`mt-3 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${
-                                  isMatch 
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                                    : 'bg-amber-50 text-amber-800 border-amber-200'
-                                }`}>
+                                <div className={`mt-3 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${isMatch
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                                  }`}>
                                   <div className="flex flex-wrap gap-x-md gap-y-1">
                                     <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
                                     <span className="text-slate-350">/</span>
@@ -674,8 +757,8 @@ export default function Proyectos({
             <form onSubmit={handleSaveEdit} className="space-y-md overflow-y-auto flex-1 pr-sm">
               <div className="flex flex-col">
                 <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Nombre / Código Proyecto</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
@@ -685,8 +768,8 @@ export default function Proyectos({
               </div>
               <div className="flex flex-col">
                 <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Superficie (m²)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={editSuperficie}
                   onChange={(e) => setEditSuperficie(e.target.value)}
                   className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
@@ -695,8 +778,8 @@ export default function Proyectos({
               </div>
               <div className="flex flex-col">
                 <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Rentabilidad Esperada (%)</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={editRentabilidad}
                   onChange={(e) => setEditRentabilidad(e.target.value)}
                   className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
@@ -705,8 +788,8 @@ export default function Proyectos({
               </div>
               <div className="flex flex-col">
                 <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Año</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={editAnio}
                   onChange={(e) => setEditAnio(e.target.value)}
                   className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface"
@@ -715,7 +798,7 @@ export default function Proyectos({
               </div>
               <div className="flex flex-col">
                 <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Cliente</label>
-                <select 
+                <select
                   value={editCliente}
                   onChange={(e) => setEditCliente(e.target.value)}
                   className="p-md bg-surface-variant/20 border border-outline-variant/50 focus:border-primary outline-none rounded-lg text-body-md text-on-surface font-medium cursor-pointer"
@@ -728,15 +811,15 @@ export default function Proyectos({
               </div>
 
               <div className="flex justify-end gap-sm pt-md border-t">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setEditingProject(null)}
                   className="px-lg py-sm text-primary font-bold hover:bg-slate-100 rounded-lg transition-all text-body-md"
                 >
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="px-lg py-sm bg-primary text-white font-bold rounded-lg hover:brightness-105 transition-all shadow-sm text-body-md"
                 >
                   Guardar Cambios
@@ -758,7 +841,7 @@ export default function Proyectos({
                   Proyecto: <strong>{extraCostProject.projectName}</strong>
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setExtraCostProject(null)}
                 className="p-1 hover:bg-slate-100 rounded-full transition-all text-secondary"
               >
@@ -773,8 +856,8 @@ export default function Proyectos({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
                   <div className="flex flex-col">
                     <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Monto (UF)</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="0.01"
                       required
                       placeholder="Ej: 45.50"
@@ -785,8 +868,8 @@ export default function Proyectos({
                   </div>
                   <div className="flex flex-col">
                     <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Superficie asociada (m²)</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       step="0.01"
                       placeholder="Ej: 15.00 (Opcional)"
                       value={extraCostSuperficie}
@@ -797,8 +880,8 @@ export default function Proyectos({
                 </div>
                 <div className="flex flex-col">
                   <label className="text-label-sm text-on-surface-variant font-bold mb-1 uppercase tracking-wider">Comentario / Justificación</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ej: Modificaciones estructurales solicitadas por el cliente"
                     value={extraCostComment}
                     onChange={(e) => setExtraCostComment(e.target.value)}
@@ -806,8 +889,8 @@ export default function Proyectos({
                   />
                 </div>
                 <div className="flex justify-end pt-sm">
-                  <button 
-                    type="submit" 
+                  <button
+                    type="submit"
                     className="px-lg py-1.5 bg-primary text-white text-body-sm font-bold rounded-lg hover:brightness-105 transition-all shadow-sm flex items-center gap-1"
                   >
                     <span className="material-symbols-outlined text-[16px]">add</span>
@@ -885,7 +968,7 @@ export default function Proyectos({
             </div>
 
             <div className="flex justify-end pt-sm border-t flex-shrink-0">
-              <button 
+              <button
                 onClick={() => setExtraCostProject(null)}
                 className="px-lg py-sm bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg transition-all text-body-md shadow-xs"
               >
@@ -906,7 +989,7 @@ export default function Proyectos({
                   Vista Previa: {previewFile.name}
                 </h3>
               </div>
-              <button 
+              <button
                 onClick={() => setPreviewFile(null)}
                 className="p-1 hover:bg-slate-100 rounded-full transition-all text-secondary"
               >
@@ -917,9 +1000,9 @@ export default function Proyectos({
             <div className="flex-1 overflow-y-auto border border-outline-variant/20 rounded-xl bg-slate-50/30 p-md min-h-[40vh]">
               {previewFile.name.toLowerCase().endsWith('.docx') ? (
                 docxHtml ? (
-                  <div 
+                  <div
                     className="prose prose-slate max-w-none text-body-md text-on-surface bg-white p-lg rounded-lg border shadow-xs"
-                    dangerouslySetInnerHTML={{ __html: docxHtml }} 
+                    dangerouslySetInnerHTML={{ __html: docxHtml }}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-20 gap-md">
@@ -935,8 +1018,8 @@ export default function Proyectos({
                     Solo los archivos Word (.docx) se pueden previsualizar directamente en el ERP.
                   </p>
                   {previewFile.url && (
-                    <a 
-                      href={previewFile.url} 
+                    <a
+                      href={previewFile.url}
                       download={previewFile.name}
                       className="inline-flex items-center gap-1.5 mt-md px-lg py-sm bg-primary text-white font-bold rounded-lg hover:brightness-105 transition-all shadow-sm text-body-md"
                     >
@@ -949,7 +1032,7 @@ export default function Proyectos({
             </div>
 
             <div className="flex justify-end pt-sm border-t mt-md flex-shrink-0">
-              <button 
+              <button
                 onClick={() => setPreviewFile(null)}
                 className="px-lg py-sm bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg transition-all text-body-md shadow-xs"
               >

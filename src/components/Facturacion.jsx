@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
+import * as XLSX from 'xlsx';
 
 export default function Facturacion({ projects, budgets, installments, clients, onUpdateInstallment }) {
   const today = new Date();
@@ -315,6 +316,138 @@ export default function Facturacion({ projects, budgets, installments, clients, 
     setExpandedProjects({});
   };
 
+  // Export Billing Installments to Excel
+  const handleExportBilling = () => {
+    const rows = [];
+
+    filteredInstallments.forEach(installment => {
+      // Find associated project
+      const project = projects.find(p => p.id === installment.project_id);
+      // Find associated budget
+      const budget = installment.origin_budget_id ? budgets.find(b => b.id === installment.origin_budget_id) : null;
+      // Find associated client
+      const client = project ? clients.find(c => c.id === project.clientId) : null;
+
+      // Calculate total installments for this budget
+      const budgetInstallments = budget ? installments.filter(i => i.origin_budget_id === budget.id) : [];
+      const totCuotas = budgetInstallments.length;
+
+      // Format date fields
+      let yearVal = '';
+      if (installment.date) {
+        yearVal = installment.date.split('-')[0];
+      }
+
+      // Check if invoiced (Facturada): status is 'Factura emitida' or 'Pagada'
+      const isInvoiced = installment.status === 'Factura emitida' || installment.status === 'Pagada';
+      const isPaid = installment.status === 'Pagada';
+
+      rows.push({
+        "Presupuesto #": budget ? budget.quoteId || '' : '',
+        "Factura #": installment.invoiceNumber || '',
+        "Fecha": installment.date || '',
+        "Año": yearVal,
+        "Año Proy": project ? project.anio || '' : '',
+        "RUT": client ? client.rut || '' : '',
+        "Razón Social": client ? client.company || '' : '',
+        "Giro": client ? client.giro || '' : '',
+        "Dirección": client ? client.address || '' : '',
+        "Comuna": client ? client.comuna || '' : '',
+        "Ciudad": client ? client.ciudad || '' : '',
+        "Contacto": client ? client.name || '' : '',
+        "Obra": project ? project.rawProjectName || '' : '',
+        "Comentario": installment.comment || '',
+        "Cuota": installment.numQuota || '',
+        "TotCuota": totCuotas || '',
+        "UF": parseFloat(installment.uf) || 0,
+        "$": isInvoiced ? parseFloat(installment.total_clp) || 0 : '',
+        "F-Pago": isPaid ? installment.actualPaymentDate || '' : '',
+        "Estado F#": installment.status || '',
+        "Tipo": '',
+        "Cliente": client ? (client.company || client.name || '') : '',
+        "N° Proyecto": project ? project.projectNumber || '' : '',
+        "Revisor": '',
+        "Firma": '',
+        "Gerente Proyecto": '',
+        "Ingeniero": '',
+        "Dibujante": '',
+        "M2": project ? parseFloat(project.superficie) || 0 : 0,
+        "Total UF": budget ? parseFloat(budget.amount) || 0 : 0
+      });
+    });
+
+    // Sort rows: first by project number, then by budget code, then by quota number
+    rows.sort((a, b) => {
+      const projA = String(a["N° Proyecto"] || '');
+      const projB = String(b["N° Proyecto"] || '');
+      const projCompare = projA.localeCompare(projB, undefined, { numeric: true, sensitivity: 'base' });
+      if (projCompare !== 0) return projCompare;
+
+      const budgetA = String(a["Presupuesto #"] || '');
+      const budgetB = String(b["Presupuesto #"] || '');
+      const budgetCompare = budgetA.localeCompare(budgetB, undefined, { numeric: true, sensitivity: 'base' });
+      if (budgetCompare !== 0) return budgetCompare;
+
+      const quotaA = String(a["Cuota"] || '');
+      const quotaB = String(b["Cuota"] || '');
+      return quotaA.localeCompare(quotaB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    // Create Sheet
+    const worksheet = XLSX.utils.json_to_sheet(rows, {
+      header: [
+        "Presupuesto #",
+        "Factura #",
+        "Fecha",
+        "Año",
+        "Año Proy",
+        "RUT",
+        "Razón Social",
+        "Giro",
+        "Dirección",
+        "Comuna",
+        "Ciudad",
+        "Contacto",
+        "Obra",
+        "Comentario",
+        "Cuota",
+        "TotCuota",
+        "UF",
+        "$",
+        "F-Pago",
+        "Estado F#",
+        "Tipo",
+        "Cliente",
+        "N° Proyecto",
+        "Revisor",
+        "Firma",
+        "Gerente Proyecto",
+        "Ingeniero",
+        "Dibujante",
+        "M2",
+        "Total UF"
+      ]
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Facturación");
+
+    // Auto-fit columns
+    const max_len = {};
+    rows.forEach(row => {
+      Object.keys(row).forEach(key => {
+        const val = String(row[key]);
+        max_len[key] = Math.max(max_len[key] || key.length, val.length);
+      });
+    });
+    worksheet["!cols"] = Object.keys(max_len).map(key => ({
+      wch: Math.min(max_len[key] + 3, 50)
+    }));
+
+    // Download Workbook
+    XLSX.writeFile(workbook, "Reporte_Facturacion.xlsx");
+  };
+
   // --- MODAL TRIGGERS ---
   const openEmitModal = (installment) => {
     setSelectedInstallment(installment);
@@ -426,6 +559,13 @@ export default function Facturacion({ projects, budgets, installments, clients, 
           <p className="text-on-surface-variant font-body-md mt-1">Gestión de cuotas de facturación y conciliación de pagos</p>
         </div>
         <div className="flex gap-sm">
+          <button 
+            onClick={handleExportBilling}
+            className="flex items-center gap-xs px-md py-sm bg-secondary text-white font-bold rounded-lg transition-all active:scale-95 text-xs hover:brightness-105"
+          >
+            <span className="material-symbols-outlined text-[18px]">file_download</span>
+            <span>Exportar Facturación</span>
+          </button>
           <button 
             onClick={expandAll}
             className="flex items-center gap-xs px-md py-sm border border-outline-variant bg-surface hover:bg-surface-container-low text-on-surface-variant font-semibold rounded-lg transition-all active:scale-95 text-xs"

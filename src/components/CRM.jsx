@@ -11,6 +11,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
   
   const [rut, setRut] = useState('');
   const [company, setCompany] = useState(''); // Nombre o Razón Social
+  const [realClient, setRealClient] = useState(''); // Cliente Real
   const [giro, setGiro] = useState('');
   const [address, setAddress] = useState('');
   const [comuna, setComuna] = useState('');
@@ -19,6 +20,15 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [rutError, setRutError] = useState('');
+
+  // Generate list of unique existing values for autocomplete suggestions
+  const uniqueRealClients = Array.from(
+    new Set(
+      clients
+        .map(c => c.realClient)
+        .filter(val => typeof val === 'string' && val.trim() !== '')
+    )
+  ).sort();
 
   // Custom modal / alert states
   const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
@@ -65,6 +75,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
       if (existingClient) {
         setEditingClientId(existingClient.id);
         setCompany(existingClient.company || '');
+        setRealClient(existingClient.realClient || '');
         setGiro(existingClient.giro || '');
         setAddress(existingClient.address || '');
         setComuna(existingClient.comuna || '');
@@ -85,6 +96,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
     setEditingClientId(null);
     setRut('');
     setCompany('');
+    setRealClient('');
     setGiro('');
     setAddress('');
     setComuna('');
@@ -100,6 +112,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
     setEditingClientId(client.id);
     setRut(client.rut || '');
     setCompany(client.company || '');
+    setRealClient(client.realClient || '');
     setGiro(client.giro || '');
     setAddress(client.address || '');
     setComuna(client.comuna || '');
@@ -136,6 +149,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
       id: editingClientId || Date.now().toString(),
       rut,
       company,
+      realClient,
       giro,
       address,
       comuna,
@@ -231,6 +245,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
               <tr className="bg-surface-container-low border-b border-outline-variant">
                 <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">RUT</th>
                 <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Nombre o Razón Social</th>
+                <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Cliente Real</th>
                 <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Giro</th>
                 <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Contacto</th>
                 <th className="p-md font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Correo Electrónico</th>
@@ -251,6 +266,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                         <span className="font-body-md font-bold text-on-surface">{client.company}</span>
                       </div>
                     </td>
+                    <td className="p-md font-body-md text-on-surface">{client.realClient || 'N/A'}</td>
                     <td className="p-md font-body-md text-on-surface-variant">{client.giro || 'N/A'}</td>
                     <td className="p-md font-body-md text-on-surface">{client.name || 'N/A'}</td>
                     <td className="p-md font-body-md text-on-surface">{client.email}</td>
@@ -284,7 +300,7 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" className="text-center py-8 text-on-surface-variant italic">
+                  <td colSpan="8" className="text-center py-8 text-on-surface-variant italic">
                     No se encontraron clientes que coincidan con la búsqueda.
                   </td>
                 </tr>
@@ -312,31 +328,46 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
       {/* modal window / Crear o Editar cliente */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-lg border border-outline-variant max-w-2xl w-full overflow-hidden animate-scale-up">
-            <div className="bg-primary text-white p-lg flex justify-between items-center">
-              <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
-                <span className="material-symbols-outlined">{editingClientId ? 'edit_note' : 'person_add'}</span>
-                {editingClientId ? 'Editar Datos del Cliente' : 'Registrar Nuevo Cliente'}
-              </h3>
+          <div className="relative bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">
+                  {editingClientId ? 'Editar Datos del Cliente' : 'Registrar Nuevo Cliente'}
+                </h2>
+                <p className="text-body-md text-on-surface-variant flex items-center gap-2">
+                  {editingClientId ? (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="font-bold text-emerald-600">Editando Cliente Existente</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                      <span>Ingresando un nuevo registro de cliente</span>
+                    </>
+                  )}
+                </p>
+              </div>
               <button 
+                type="button"
                 onClick={handleCloseModal}
-                className="text-white hover:text-secondary-fixed transition-colors"
+                className="p-2 hover:bg-slate-100 rounded-full transition-all"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-lg flex flex-col gap-md max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <form onSubmit={handleSubmit} className="p-lg space-y-lg text-left">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-md text-left">
                 {/* RUT */}
-                <div className="space-y-xs md:col-span-2">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs md:col-span-2">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     RUT *
                   </label>
                   <input 
                     type="text" 
-                    className={`w-full px-md py-md bg-surface-container-low border ${
-                      rutError ? 'border-error focus:border-error focus:ring-error/20' : 'border-outline-variant focus:border-secondary focus:ring-secondary/20'
-                    } rounded outline-none transition-all`} 
+                    className={`w-full border rounded-lg text-body-md py-2 px-3 focus:ring-1 outline-none transition-all bg-white ${
+                      rutError ? 'border-error focus:ring-error/20 focus:border-error' : 'border-slate-200 focus:ring-secondary focus:border-secondary'
+                    }`} 
                     placeholder="Ej: 12.345.678-9"
                     required
                     value={rut}
@@ -354,13 +385,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Razón Social */}
-                <div className="space-y-xs md:col-span-2">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs md:col-span-2">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Nombre o Razón Social *
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: TechNova Solutions S.A."
                     required
                     value={company}
@@ -368,14 +399,34 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                   />
                 </div>
 
+                {/* Cliente Real */}
+                <div className="flex flex-col gap-xs md:col-span-2 animate-fade-in">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
+                    Cliente Real
+                  </label>
+                  <input 
+                    type="text" 
+                    list="real-client-suggestions"
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
+                    placeholder="Ej: Cliente Real S.A."
+                    value={realClient}
+                    onChange={(e) => setRealClient(e.target.value)}
+                  />
+                  <datalist id="real-client-suggestions">
+                    {uniqueRealClients.map((val, idx) => (
+                      <option key={idx} value={val} />
+                    ))}
+                  </datalist>
+                </div>
+
                 {/* Giro */}
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Giro
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: Servicios Informáticos"
                     value={giro}
                     onChange={(e) => setGiro(e.target.value)}
@@ -383,13 +434,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Contacto */}
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Contacto
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: Alejandro Sánchez"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -397,13 +448,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Dirección */}
-                <div className="space-y-xs md:col-span-2">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs md:col-span-2">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Dirección
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: Av. Providencia 1234, Of. 501"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
@@ -411,13 +462,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Comuna */}
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Comuna
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: Providencia"
                     value={comuna}
                     onChange={(e) => setComuna(e.target.value)}
@@ -425,13 +476,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Ciudad */}
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Ciudad
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: Santiago"
                     value={ciudad}
                     onChange={(e) => setCiudad(e.target.value)}
@@ -439,13 +490,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Correo Electrónico */}
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Correo Electrónico *
                   </label>
                   <input 
                     type="email" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="ejemplo@empresa.com"
                     required
                     value={email}
@@ -454,13 +505,13 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
 
                 {/* Teléfono */}
-                <div className="space-y-xs">
-                  <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
                     Teléfono
                   </label>
                   <input 
                     type="text" 
-                    className="w-full px-md py-md bg-surface-container-low border border-outline-variant rounded focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all" 
+                    className="w-full border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white" 
                     placeholder="Ej: +56 9 1234 5678"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
@@ -468,18 +519,18 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-md mt-sm justify-end border-t border-outline-variant/30 pt-md">
-                <button 
-                  type="button" 
+              {/* Footer Actions */}
+              <div className="flex justify-end gap-md pt-lg border-t border-outline-variant mt-sm">
+                <button
+                  className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
                   onClick={handleCloseModal}
-                  className="px-lg py-md border border-outline-variant text-on-surface-variant rounded-lg font-bold hover:bg-surface-container-low transition-colors"
+                  type="button"
                 >
-                  Cancelar
+                  Descartar
                 </button>
-                <button 
-                  type="submit" 
-                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
+                <button
+                  type="submit"
+                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95"
                 >
                   {editingClientId ? 'Actualizar Cliente' : 'Guardar Cliente'}
                 </button>
@@ -492,15 +543,15 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
       {/* modal window / Ver Ficha de Cliente */}
       {viewingClient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-lg border border-outline-variant max-w-2xl w-full overflow-hidden animate-scale-up">
-            <div className="bg-primary text-white p-lg flex justify-between items-center">
-              <h3 className="font-title-lg text-title-lg font-bold flex items-center gap-sm">
-                <span className="material-symbols-outlined">badge</span>
-                Ficha del Cliente
-              </h3>
+          <div className="relative bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Ficha del Cliente</h2>
+                <p className="text-body-md text-on-surface-variant flex items-center gap-2">Detalles completos del registro en el sistema</p>
+              </div>
               <button 
                 onClick={() => setViewingClient(null)}
-                className="text-white hover:text-secondary-fixed transition-colors"
+                className="p-2 hover:bg-slate-100 rounded-full transition-all"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -520,6 +571,14 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                   <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
                     <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Nombre o Razón Social</span>
                     <span className="font-body-lg text-body-lg text-primary font-semibold mt-1 block">{viewingClient.company || 'N/A'}</span>
+                  </div>
+                </div>
+
+                {/* Cliente Real */}
+                <div className="space-y-xs md:col-span-2">
+                  <div className="bg-surface-container-low p-md rounded border border-outline-variant/30">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block font-bold">Cliente Real</span>
+                    <span className="font-body-lg text-body-lg text-primary font-semibold mt-1 block">{viewingClient.realClient || 'N/A'}</span>
                   </div>
                 </div>
 
@@ -580,12 +639,12 @@ export default function CRM({ clients, onAddClient, onDeleteClient }) {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-md mt-sm justify-end border-t border-outline-variant/30 pt-md">
-                <button 
-                  type="button" 
+              {/* Footer Actions */}
+              <div className="flex justify-end gap-md pt-lg border-t border-outline-variant mt-sm">
+                <button
+                  type="button"
                   onClick={() => setViewingClient(null)}
-                  className="px-lg py-md bg-primary text-white hover:bg-primary-container rounded-lg font-bold transition-all active:scale-[0.98]"
+                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95"
                 >
                   Cerrar Ficha
                 </button>
