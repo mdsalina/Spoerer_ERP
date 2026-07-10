@@ -13,7 +13,8 @@ import './App.css';
 export default function App() {
   const [user, setUser] = useState(null);
   const [currentTab, setCurrentTab] = useState('crm');
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Flat SQL-aligned states
   const [clients, setClients] = useState([]);
@@ -31,6 +32,22 @@ export default function App() {
     { id: 'INV-2023-004', clientName: 'Retail Max S.L.', amount: 2100.00, dueDate: '28 Oct, 2023', status: 'No Pagada' },
     { id: 'INV-2023-005', clientName: 'Distribuidora Alianza', amount: 9900.00, dueDate: '05 Oct, 2023', status: 'Pagada' }
   ]);
+
+  // Persistent filter states for each tab
+  const [crmSearch, setCrmSearch] = useState('');
+
+  const [presupuestosSearch, setPresupuestosSearch] = useState('');
+  const [presupuestosStatusFilter, setPresupuestosStatusFilter] = useState('Todos');
+  const [presupuestosCalcPeriod, setPresupuestosCalcPeriod] = useState('12');
+
+  const [facturacionTemporalFilter, setFacturacionTemporalFilter] = useState('Todos');
+  const [facturacionStatusFilter, setFacturacionStatusFilter] = useState('Todos');
+  const [facturacionClientFilter, setFacturacionClientFilter] = useState('Todos');
+  const [facturacionSearch, setFacturacionSearch] = useState('');
+
+  const [proyectosSearch, setProyectosSearch] = useState('');
+
+  const [usuariosSearch, setUsuariosSearch] = useState('');
 
   // Authenticate user on load or session
   const handleLogin = (userData) => {
@@ -50,7 +67,7 @@ export default function App() {
   useEffect(() => {
     async function checkSessionAndLoadData() {
       try {
-        setLoading(true);
+        setInitialLoading(true);
         
         // 1. Verificar sesión activa
         const { data: { session } } = await supabase.auth.getSession();
@@ -90,7 +107,7 @@ export default function App() {
       } catch (error) {
         console.error("Error cargando datos de Supabase:", error);
       } finally {
-        setLoading(false);
+        setInitialLoading(false);
       }
     }
     checkSessionAndLoadData();
@@ -143,7 +160,8 @@ export default function App() {
         });
       }
     } catch (err) {
-      alert("Error al guardar el presupuesto: " + err.message);
+      console.error("Error al guardar presupuesto:", err);
+      throw err;
     }
   };
 
@@ -153,7 +171,8 @@ export default function App() {
       setQuotes(prev => prev.filter(q => q.id !== id));
       setInstallments(prev => prev.filter(i => i.origin_budget_id !== id));
     } catch (err) {
-      alert("Error al eliminar presupuesto: " + err.message);
+      console.error("Error al eliminar presupuesto:", err);
+      throw err;
     }
   };
 
@@ -182,10 +201,9 @@ export default function App() {
         return [...filtered, ...result.installments];
       });
       
-      alert("¡Presupuesto aprobado y Proyecto guardado con éxito!");
     } catch (err) {
       console.error("Error al aprobar presupuesto:", err);
-      alert("Error al aprobar presupuesto: " + err.message);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -216,22 +234,20 @@ export default function App() {
     try {
       const saved = await supabaseService.saveProject(updatedProject);
       setProjects(prev => prev.map(p => p.id === saved.id ? saved : p));
-      alert("Proyecto actualizado exitosamente.");
     } catch (err) {
-      alert("Error al actualizar proyecto: " + err.message);
+      console.error("Error al actualizar proyecto:", err);
+      throw err;
     }
   };
 
   const handleDeleteProject = async (id) => {
-    if (confirm("¿Está seguro de que desea eliminar el proyecto por completo? Se perderán todas sus tablas de facturación.")) {
-      try {
-        await supabaseService.deleteProject(id);
-        setProjects(prev => prev.filter(p => p.id !== id));
-        setInstallments(prev => prev.filter(i => i.project_id !== id));
-        alert("Proyecto eliminado exitosamente.");
-      } catch (err) {
-        alert("Error al eliminar proyecto: " + err.message);
-      }
+    try {
+      await supabaseService.deleteProject(id);
+      setProjects(prev => prev.filter(p => p.id !== id));
+      setInstallments(prev => prev.filter(i => i.project_id !== id));
+    } catch (err) {
+      console.error("Error al eliminar proyecto:", err);
+      throw err;
     }
   };
 
@@ -296,9 +312,9 @@ export default function App() {
 
       const freshInsts = await supabaseService.getInstallments();
       setInstallments(freshInsts);
-      alert("¡Tabla de facturación guardada exitosamente en Supabase!");
     } catch (err) {
-      alert("Error al guardar facturación: " + err.message);
+      console.error("Error al guardar facturación:", err);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -313,9 +329,9 @@ export default function App() {
         if (exists) return prev.map(ec => ec.id === savedCost.id ? savedCost : ec);
         return [...prev, savedCost];
       });
-      alert("Costo extra registrado exitosamente.");
     } catch (err) {
-      alert("Error al registrar costo extra: " + err.message);
+      console.error("Error al registrar costo extra:", err);
+      throw err;
     }
   };
 
@@ -323,9 +339,9 @@ export default function App() {
     try {
       await supabaseService.deleteExtraCost(id);
       setExtraCosts(prev => prev.filter(ec => ec.id !== id));
-      alert("Costo extra eliminado exitosamente.");
     } catch (err) {
-      alert("Error al eliminar costo extra: " + err.message);
+      console.error("Error al eliminar costo extra:", err);
+      throw err;
     }
   };
 
@@ -416,7 +432,13 @@ export default function App() {
 
   return (
     <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} user={user} onLogout={handleLogout}>
-      {loading ? (
+      {loading && (
+        <div className="fixed inset-0 z-[999] bg-primary/20 backdrop-blur-[2px] flex flex-col items-center justify-center gap-md">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-body-md text-primary font-bold">Procesando...</span>
+        </div>
+      )}
+      {initialLoading ? (
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-md">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
           <span className="text-body-md text-on-surface-variant font-bold">Cargando base de datos de Supabase...</span>
@@ -428,6 +450,8 @@ export default function App() {
               clients={clients} 
               onAddClient={addClient} 
               onDeleteClient={deleteClient}
+              searchTerm={crmSearch}
+              setSearchTerm={setCrmSearch}
             />
           )}
           {currentTab === 'presupuestos' && (
@@ -440,6 +464,12 @@ export default function App() {
               onApproveBudgetAndCreateProject={handleApproveBudgetAndCreateProject}
               installments={installments}
               users={users}
+              searchTerm={presupuestosSearch}
+              setSearchTerm={setPresupuestosSearch}
+              statusFilter={presupuestosStatusFilter}
+              setStatusFilter={setPresupuestosStatusFilter}
+              calcPeriod={presupuestosCalcPeriod}
+              setCalcPeriod={setPresupuestosCalcPeriod}
             />
           )}
           {currentTab === 'facturacion' && (
@@ -449,6 +479,14 @@ export default function App() {
               installments={installments}
               clients={clients}
               onUpdateInstallment={handleUpdateInstallment}
+              temporalFilter={facturacionTemporalFilter}
+              setTemporalFilter={setFacturacionTemporalFilter}
+              statusFilter={facturacionStatusFilter}
+              setStatusFilter={setFacturacionStatusFilter}
+              clientFilter={facturacionClientFilter}
+              setClientFilter={setFacturacionClientFilter}
+              searchTerm={facturacionSearch}
+              setSearchTerm={setFacturacionSearch}
             />
           )}
           {currentTab === 'usuarios' && isAdmin && (
@@ -458,6 +496,8 @@ export default function App() {
               onToggleUserStatus={toggleUserStatus} 
               onEditUser={editUser}
               onDeleteUser={deleteUser}
+              searchTerm={usuariosSearch}
+              setSearchTerm={setUsuariosSearch}
             />
           )}
           {currentTab === 'proyectos' && (
@@ -475,6 +515,8 @@ export default function App() {
               onSaveProject={handleSaveProject}
               onDeleteProject={handleDeleteProject}
               onSaveInstallments={handleSaveInstallments}
+              searchTerm={proyectosSearch}
+              setSearchTerm={setProyectosSearch}
             />
           )}
         </>

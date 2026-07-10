@@ -15,9 +15,10 @@ export default function Proyectos({
   onDeleteExtraCost,
   onSaveProject,
   onDeleteProject,
-  onSaveInstallments
+  onSaveInstallments,
+  searchTerm,
+  setSearchTerm
 }) {
-  const [searchTerm, setSearchTerm] = useState('');
   const [expandedProjectId, setExpandedProjectId] = useState(null);
 
   // Document preview state
@@ -76,6 +77,11 @@ export default function Proyectos({
   const [editAnio, setEditAnio] = useState('');
   const [editCliente, setEditCliente] = useState('');
 
+  // Custom modal / alert states
+  const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [extraCostToDelete, setExtraCostToDelete] = useState(null);
+
   // Search filter
   const filteredProjects = projects.filter(project => {
     const term = searchTerm.toLowerCase();
@@ -120,10 +126,14 @@ export default function Proyectos({
   };
 
   // Save project general parameters edit
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editName) {
-      alert("Por favor ingrese el Nº y Nombre del proyecto");
+      setNotification({
+        type: 'error',
+        title: 'Error de Validación',
+        message: 'Por favor ingrese el Nº y Nombre del proyecto.'
+      });
       return;
     }
 
@@ -135,33 +145,63 @@ export default function Proyectos({
     // Resolve client
     const selectedCli = clients.find(c => c.company === editCliente);
 
-    onSaveProject({
-      id: editingProject.id,
-      projectNumber: projectNumber,
-      rawProjectName: rawProjectName,
-      superficie: parseFloat(editSuperficie) || 0,
-      rentabilidad: parseFloat(editRentabilidad) || 0,
-      anio: parseInt(editAnio) || new Date().getFullYear(),
-      clientId: selectedCli ? selectedCli.id : editingProject.clientId,
-      status: editingProject.status
-    });
+    try {
+      await onSaveProject({
+        id: editingProject.id,
+        projectNumber: projectNumber,
+        rawProjectName: rawProjectName,
+        superficie: parseFloat(editSuperficie) || 0,
+        rentabilidad: parseFloat(editRentabilidad) || 0,
+        anio: parseInt(editAnio) || new Date().getFullYear(),
+        clientId: selectedCli ? selectedCli.id : editingProject.clientId,
+        status: editingProject.status
+      });
+      setNotification({
+        type: 'success',
+        title: 'Proyecto Guardado',
+        message: 'Los parámetros generales del proyecto han sido actualizados exitosamente.'
+      });
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        title: 'Error al Guardar',
+        message: err.message || 'Ocurrió un error al actualizar el proyecto.'
+      });
+    }
 
     setEditingProject(null);
   };
 
   // Save billing table edits (batch saving)
-  const handleSaveBillingTable = (budgetId, budgetAmount) => {
+  const handleSaveBillingTable = async (budgetId, budgetAmount) => {
     const budgetInsts = localInstallments.filter(i => i.origin_budget_id === budgetId);
     const currentSum = budgetInsts.reduce((acc, row) => acc + (parseFloat(row.uf) || 0), 0);
     const roundedSum = Math.round(currentSum * 100) / 100;
     const expectedTotal = Math.round((parseFloat(budgetAmount) || 0) * 100) / 100;
 
     if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
-      alert(`Error al guardar: La suma de las cuotas (${roundedSum.toFixed(2)} UF) no es igual al total requerido del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
+      setNotification({
+        type: 'error',
+        title: 'Error al Guardar',
+        message: `La suma de las cuotas (${roundedSum.toFixed(2)} UF) no es igual al total requerido del presupuesto (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`
+      });
       return;
     }
 
-    onSaveInstallments(budgetId, budgetInsts);
+    try {
+      await onSaveInstallments(budgetId, budgetInsts);
+      setNotification({
+        type: 'success',
+        title: 'Facturación Guardada',
+        message: 'La tabla de facturación ha sido guardada exitosamente.'
+      });
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        title: 'Error al Guardar',
+        message: err.message || 'Ocurrió un error al guardar la tabla de facturación.'
+      });
+    }
   };
 
   const handleDeleteRowLocal = (installmentId, budgetId) => {
@@ -230,35 +270,54 @@ export default function Proyectos({
     setExtraCostComment('');
   };
 
-  const handleAddExtraCostLocal = (e) => {
+  const handleAddExtraCostLocal = async (e) => {
     e.preventDefault();
     if (!extraCostUF) {
-      alert("Por favor ingrese el Costo Extra (UF)");
+      setNotification({
+        type: 'error',
+        title: 'Error de Validación',
+        message: 'Por favor ingrese el Costo Extra (UF).'
+      });
       return;
     }
 
-    onAddExtraCost({
-      project_id: extraCostProject.id,
-      amount: parseFloat(extraCostUF) || 0,
-      superficie: parseFloat(extraCostSuperficie) || 0,
-      comment: extraCostComment || ''
-    });
-
-    // Reset fields to allow adding another cost extra
-    setExtraCostUF('');
-    setExtraCostSuperficie('');
-    setExtraCostComment('');
+    try {
+      await onAddExtraCost({
+        project_id: extraCostProject.id,
+        amount: parseFloat(extraCostUF) || 0,
+        superficie: parseFloat(extraCostSuperficie) || 0,
+        comment: extraCostComment || ''
+      });
+      setNotification({
+        type: 'success',
+        title: 'Costo Extra Registrado',
+        message: 'El costo extra ha sido registrado exitosamente.'
+      });
+      // Reset fields to allow adding another cost extra
+      setExtraCostUF('');
+      setExtraCostSuperficie('');
+      setExtraCostComment('');
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        title: 'Error al Registrar',
+        message: err.message || 'Ocurrió un error al registrar el costo extra.'
+      });
+    }
   };
 
   const handleDeleteExtraCostLocal = (costId) => {
-    if (confirm("¿Está seguro de que desea eliminar este costo extra?")) {
-      onDeleteExtraCost(costId);
-    }
+    setExtraCostToDelete(costId);
   };
 
   // Delete project
   const handleDeleteProjectLocal = (id, name) => {
-    onDeleteProject(id);
+    const proj = projects.find(p => p.id === id);
+    if (proj) {
+      setProjectToDelete(proj);
+    } else {
+      setProjectToDelete({ id, projectName: name });
+    }
   };
 
   // Export Budgets and Extra Costs to Excel
@@ -1066,6 +1125,135 @@ export default function Proyectos({
                 className="px-lg py-sm bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg transition-all text-body-md shadow-xs"
               >
                 Cerrar Vista Previa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reusable Notification Modal (Success / Error) */}
+      {notification && (
+        <div className="fixed inset-0 z-[100] bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-sm mb-2 ${
+              notification.type === 'error' ? 'bg-error-container/20 text-error' : 'bg-secondary-container/20 text-secondary'
+            }`}>
+              <span className="material-symbols-outlined text-[36px]">
+                {notification.type === 'error' ? 'error' : 'check_circle'}
+              </span>
+            </div>
+            
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">{notification.title}</h3>
+              <p className="text-body-md text-on-surface-variant">{notification.message}</p>
+            </div>
+
+            <div className="pt-sm">
+              <button 
+                onClick={() => setNotification(null)}
+                className="w-full bg-primary text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal for Deletion */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-50 bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className="w-16 h-16 bg-error-container/20 rounded-full flex items-center justify-center text-error mx-auto shadow-sm mb-2">
+              <span className="material-symbols-outlined text-[36px]">warning</span>
+            </div>
+            
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">¿Eliminar Proyecto?</h3>
+              <p className="text-body-md text-on-surface-variant">
+                ¿Está seguro de que desea eliminar por completo el proyecto <strong>{projectToDelete.projectName}</strong>? Se perderán todas sus tablas de facturación y costos extras. Esta acción no se puede deshacer.
+              </p>
+            </div>
+
+            <div className="pt-sm flex gap-md">
+              <button 
+                onClick={() => setProjectToDelete(null)}
+                className="flex-1 bg-white border border-outline-variant text-on-surface py-sm rounded-lg font-bold hover:bg-surface-container transition-all active:scale-95 text-body-md"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const id = projectToDelete.id;
+                  setProjectToDelete(null);
+                  try {
+                    await onDeleteProject(id);
+                    setNotification({
+                      type: 'success',
+                      title: 'Proyecto Eliminado',
+                      message: 'El proyecto ha sido eliminado exitosamente del sistema.'
+                    });
+                  } catch (err) {
+                    setNotification({
+                      type: 'error',
+                      title: 'Error al Eliminar',
+                      message: err.message || 'Ocurrió un error al eliminar el proyecto.'
+                    });
+                  }
+                }}
+                className="flex-1 bg-error text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal for Extra Cost Deletion */}
+      {extraCostToDelete && (
+        <div className="fixed inset-0 z-50 bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className="w-16 h-16 bg-error-container/20 rounded-full flex items-center justify-center text-error mx-auto shadow-sm mb-2">
+              <span className="material-symbols-outlined text-[36px]">warning</span>
+            </div>
+            
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">¿Eliminar Costo Extra?</h3>
+              <p className="text-body-md text-on-surface-variant">
+                ¿Está seguro de que desea eliminar este costo extra? Esta acción no se puede deshacer.
+              </p>
+            </div>
+
+            <div className="pt-sm flex gap-md">
+              <button 
+                onClick={() => setExtraCostToDelete(null)}
+                className="flex-1 bg-white border border-outline-variant text-on-surface py-sm rounded-lg font-bold hover:bg-surface-container transition-all active:scale-95 text-body-md"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const id = extraCostToDelete;
+                  setExtraCostToDelete(null);
+                  try {
+                    await onDeleteExtraCost(id);
+                    setNotification({
+                      type: 'success',
+                      title: 'Costo Extra Eliminado',
+                      message: 'El costo extra ha sido eliminado exitosamente.'
+                    });
+                  } catch (err) {
+                    setNotification({
+                      type: 'error',
+                      title: 'Error al Eliminar',
+                      message: err.message || 'Ocurrió un error al eliminar el costo extra.'
+                    });
+                  }
+                }}
+                className="flex-1 bg-error text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Sí, Eliminar
               </button>
             </div>
           </div>

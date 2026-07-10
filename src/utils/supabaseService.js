@@ -43,7 +43,9 @@ const mapBudgetFromDb = (dbBudget) => ({
   quoteId: dbBudget.budget_number,
   clientId: dbBudget.client_id,
   projectId: dbBudget.project_id,
-  clientName: dbBudget.clients ? dbBudget.clients.contact_name : '',
+  clientName: dbBudget.clients 
+    ? (dbBudget.clients.company_name + (dbBudget.clients.real_client ? ` (${dbBudget.clients.real_client})` : '')) 
+    : '',
   company: dbBudget.clients ? dbBudget.clients.company_name : '',
   title: dbBudget.title,
   date: dbBudget.date ? dbBudget.date.split('-').reverse().join('/') : '', // YYYY-MM-DD -> DD/MM/YYYY

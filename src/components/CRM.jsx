@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { validateRut, formatRut } from '../utils/validation';
 
-export default function CRM({ clients, onAddClient, onDeleteClient }) {
-  const [searchTerm, setSearchTerm] = useState('');
+export default function CRM({ clients, onAddClient, onDeleteClient, searchTerm, setSearchTerm }) {
   
   // New client form states
   const [isModalOpen, setIsModalOpen] = useState(false);

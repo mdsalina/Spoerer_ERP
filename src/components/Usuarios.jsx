@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 
-export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditUser, onDeleteUser }) {
-  const [searchTerm, setSearchTerm] = useState('');
+export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditUser, onDeleteUser, searchTerm, setSearchTerm }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // New user form state

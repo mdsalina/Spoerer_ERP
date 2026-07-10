@@ -2,15 +2,23 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import * as XLSX from 'xlsx';
 
-export default function Facturacion({ projects, budgets, installments, clients, onUpdateInstallment }) {
+export default function Facturacion({
+  projects,
+  budgets,
+  installments,
+  clients,
+  onUpdateInstallment,
+  temporalFilter,
+  setTemporalFilter,
+  statusFilter,
+  setStatusFilter,
+  clientFilter,
+  setClientFilter,
+  searchTerm,
+  setSearchTerm
+}) {
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-  // --- FILTERS STATE ---
-  const [temporalFilter, setTemporalFilter] = useState('Todos'); // '1_mes', '6_meses', '12_meses', 'Todos'
-  const [statusFilter, setStatusFilter] = useState('Todos'); // 'Todos', 'Por facturar', 'Factura emitida', 'Pagada'
-  const [clientFilter, setClientFilter] = useState('Todos'); // client ID or 'Todos'
-  const [searchTerm, setSearchTerm] = useState('');
 
   // --- EXPANSION STATE ---
   const [expandedProjects, setExpandedProjects] = useState({});

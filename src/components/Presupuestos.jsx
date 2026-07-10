@@ -26,19 +26,32 @@ const isQuoteInPeriod = (quote, period) => {
   if (period === 'all') return true;
   const quoteDate = parseDate(quote.date);
   if (!quoteDate) return false;
-  
+
   const today = new Date();
   const cutoffDate = new Date();
   cutoffDate.setMonth(today.getMonth() - parseInt(period, 10));
-  
+
   return quoteDate >= cutoffDate;
 };
 
-export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuote, projects, onApproveBudgetAndCreateProject, installments, users = [] }) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Todos');
+export default function Presupuestos({
+  quotes,
+  clients,
+  onAddQuote,
+  onDeleteQuote,
+  projects,
+  onApproveBudgetAndCreateProject,
+  installments,
+  users = [],
+  searchTerm,
+  setSearchTerm,
+  statusFilter,
+  setStatusFilter,
+  calcPeriod,
+  setCalcPeriod
+}) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [calcPeriod, setCalcPeriod] = useState('12');
+  const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewingQuote, setViewingQuote] = useState(null);
 
@@ -339,7 +352,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       setBillingTable([]);
       return;
     }
-    
+
     const firstRowUf = parseFloat((parsedTotalVal * 0.25).toFixed(2));
     const secondRowUf = parseFloat(((parsedTotalVal * 0.75) / 10).toFixed(2));
     const secondRowDate = addMonthsToDateString(startDate, 1);
@@ -376,10 +389,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       if (idx === index) {
         return {
           ...row,
-          [field]: field === 'uf' 
-            ? (parseFloat(value) || 0) 
-            : field === 'cuotas' 
-              ? (parseInt(value) || 1) 
+          [field]: field === 'uf'
+            ? (parseFloat(value) || 0)
+            : field === 'cuotas'
+              ? (parseInt(value) || 1)
               : value
         };
       }
@@ -435,7 +448,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setApprovingQuoteBackupFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleApproveSubmit = (e) => {
+  const handleApproveSubmit = async (e) => {
     e.preventDefault();
     setValidationError('');
 
@@ -499,16 +512,24 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       anio: parseInt(anio) || new Date().getFullYear()
     };
 
-    onApproveBudgetAndCreateProject(projectForm, approvingQuote.id, expandedTable);
-
-    // Reset approval modal states
-    setIsApproveModalOpen(false);
-    setApprovingQuote(null);
-    setApprovingQuoteBackupFiles([]);
-    setValidationError('');
-    setMatchedProjectId(null);
-    setPrefilledFromProjectId(null);
-    setShowSuggestions(false);
+    try {
+      await onApproveBudgetAndCreateProject(projectForm, approvingQuote.id, expandedTable);
+      setNotification({
+        type: 'success',
+        title: 'Presupuesto Aprobado',
+        message: 'El presupuesto ha sido aprobado y el proyecto se ha creado con éxito.'
+      });
+      // Reset approval modal states
+      setIsApproveModalOpen(false);
+      setApprovingQuote(null);
+      setApprovingQuoteBackupFiles([]);
+      setValidationError('');
+      setMatchedProjectId(null);
+      setPrefilledFromProjectId(null);
+      setShowSuggestions(false);
+    } catch (err) {
+      setValidationError(err.message || 'Error al aprobar presupuesto.');
+    }
   };
 
   const handleStatusChange = (id, newStatus) => {
@@ -538,20 +559,20 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
         setMatchedProjectId(null);
         setPrefilledFromProjectId(null);
         setShowSuggestions(false);
-        
+
         const d = new Date();
         d.setMonth(d.getMonth() + 1);
         const nextMonthDate = d.toISOString().split('T')[0];
         setFechaInicio(nextMonthDate);
-        
+
         const currentYear = new Date().getFullYear();
         setAnio(currentYear);
-        
+
         setValorProyecto(quote.amount || 0);
-        
+
         const clientNameVal = quote.company || quote.clientName || '';
         setCliente(clientNameVal);
-        
+
         // Regenerate billing table with default 2 rows: 1 cuota with 25%, 10 cuotas with 75%
         const budgetAmount = quote.amount || 0;
         const firstRowUf = parseFloat((budgetAmount * 0.25).toFixed(2));
@@ -603,11 +624,12 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setQuoteId(quote.quoteId);
     setCurrentBudgetUuid(quote.id);
     const matchedClient = clients.find(c =>
+      (quote.clientId && c.id === quote.clientId) ||
       c.name === quote.clientName ||
       c.company === quote.company ||
       (c.name || c.company) === quote.clientName
     );
-    setSelectedClient(matchedClient ? (matchedClient.name || matchedClient.company) : (quote.clientName || ''));
+    setSelectedClient(matchedClient ? matchedClient.id : (quote.clientId || ''));
 
     let formattedDate = '';
     if (quote.date) {
@@ -623,7 +645,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     const valDays = quote.validity ? parseInt(quote.validity) || 30 : 30;
     setValidity(valDays);
     setQuoteTitle(quote.title || '');
-    
+
     // Calculate initial subtotal
     const initialSubtotal = quote.items && quote.items.length > 0
       ? quote.items.reduce((sum, item) => sum + (item.qty * item.price), 0)
@@ -659,11 +681,12 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       setIsExistingQuote(true);
       setCurrentBudgetUuid(existing.id);
       const matchedClient = clients.find(c =>
+        (existing.clientId && c.id === existing.clientId) ||
         c.name === existing.clientName ||
         c.company === existing.company ||
         (c.name || c.company) === existing.clientName
       );
-      setSelectedClient(matchedClient ? (matchedClient.name || matchedClient.company) : (existing.clientName || ''));
+      setSelectedClient(matchedClient ? matchedClient.id : (existing.clientId || ''));
 
       let formattedDate = '';
       if (existing.date) {
@@ -877,7 +900,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
           (c.company && c.company.toLowerCase().includes(data.clientName.toLowerCase()))
         );
         if (matched) {
-          setSelectedClient(matched.name || matched.company);
+          setSelectedClient(matched.id);
         }
       }
 
@@ -930,20 +953,30 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
     setBackupFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedClient || selectedClient === 'Select Client...') {
-      alert('Por favor seleccione un cliente');
+      setNotification({
+        type: 'error',
+        title: 'Error de Validación',
+        message: 'Por favor seleccione un cliente.'
+      });
       return;
     }
 
-    const clientObj = clients.find(c => (c.name || c.company) === selectedClient) || { name: selectedClient };
-    const clientName = clientObj.name || clientObj.company || selectedClient;
+    const clientObj = clients.find(c => c.id === selectedClient) || clients.find(c => (c.name || c.company) === selectedClient) || { name: selectedClient };
+    const clientName = clientObj.company
+      ? (clientObj.company + (clientObj.realClient ? ` (${clientObj.realClient})` : ''))
+      : (clientObj.name || selectedClient);
     const companyName = clientObj.company || 'N/A';
 
     const formattedId = quoteId.replace(/\D/g, '').padStart(4, '0');
     if (!formattedId) {
-      alert('Por favor ingrese un número de presupuesto válido');
+      setNotification({
+        type: 'error',
+        title: 'Error de Validación',
+        message: 'Por favor ingrese un número de presupuesto válido.'
+      });
       return;
     }
 
@@ -957,7 +990,11 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       const roundedSum = Math.round(currentSum * 100) / 100;
       const expectedTotal = Math.round((parseFloat(subtotal) || 0) * 100) / 100;
       if (Math.abs(roundedSum - expectedTotal) >= 0.02) {
-        alert(`La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el subtotal del presupuesto (antes de impuestos) (${expectedTotal.toFixed(2)} UF). Diferencia: ${(expectedTotal - roundedSum).toFixed(2)} UF.`);
+        setNotification({
+          type: 'error',
+          title: 'Error de Cuotas',
+          message: `La suma de las cuotas (${roundedSum.toFixed(2)} UF) no coincide con el subtotal del presupuesto (${expectedTotal.toFixed(2)} UF).`
+        });
         return;
       }
     }
@@ -980,19 +1017,31 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       projectId: existingQuote ? existingQuote.projectId : null
     };
 
-    onAddQuote(newQuote, newQuote.items, editBillingTable);
-
-    // Reset form
-    setSelectedClient('');
-    setValidity(30);
-    setQuoteTitle('Servicios ERP');
-    setSubtotal(0);
-    setBackupFiles([]);
-    setEditBillingTable([]);
-    setQuoteId('');
-    setCurrentBudgetUuid(null);
-    setIsExistingQuote(false);
-    setIsModalOpen(false);
+    try {
+      await onAddQuote(newQuote, newQuote.items, editBillingTable);
+      setNotification({
+        type: 'success',
+        title: 'Presupuesto Guardado',
+        message: 'El presupuesto ha sido registrado/actualizado exitosamente.'
+      });
+      // Reset form
+      setSelectedClient('');
+      setValidity(30);
+      setQuoteTitle('Servicios ERP');
+      setSubtotal(0);
+      setBackupFiles([]);
+      setEditBillingTable([]);
+      setQuoteId('');
+      setCurrentBudgetUuid(null);
+      setIsExistingQuote(false);
+      setIsModalOpen(false);
+    } catch (err) {
+      setNotification({
+        type: 'error',
+        title: 'Error al Guardar',
+        message: err.message || 'Ocurrió un error al guardar el presupuesto.'
+      });
+    }
   };
 
   // Filter quotes
@@ -1146,11 +1195,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                   key={p.value}
                   type="button"
                   onClick={() => setCalcPeriod(p.value)}
-                  className={`px-3 py-1.5 rounded text-[11px] font-semibold transition-all ${
-                    calcPeriod === p.value 
-                      ? 'bg-primary text-white shadow-sm' 
+                  className={`px-3 py-1.5 rounded text-[11px] font-semibold transition-all ${calcPeriod === p.value
+                      ? 'bg-primary text-white shadow-sm'
                       : 'text-on-surface-variant hover:bg-surface-container-high'
-                  }`}
+                    }`}
                 >
                   {p.label}
                 </button>
@@ -1167,11 +1215,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                   key={status}
                   type="button"
                   onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded text-[11px] font-semibold transition-all ${
-                    statusFilter === status
+                  className={`px-3 py-1.5 rounded text-[11px] font-semibold transition-all ${statusFilter === status
                       ? 'bg-primary text-white shadow-sm'
                       : 'text-on-surface-variant hover:bg-surface-container-high'
-                  }`}
+                    }`}
                 >
                   {status}
                 </button>
@@ -1244,10 +1291,8 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                         value={quote.status}
                         onChange={(e) => handleStatusChange(quote.id, e.target.value)}
                         disabled={quote.status === 'Aprobado' || quote.status === 'Aprovado'}
-                        className={`px-2 py-0.5 rounded-full text-label-sm font-bold border outline-none transition-all ${
-                          quote.status === 'Aprobado' || quote.status === 'Aprovado' ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
-                        } ${
-                          quote.status === 'Borrador'
+                        className={`px-2 py-0.5 rounded-full text-label-sm font-bold border outline-none transition-all ${quote.status === 'Aprobado' || quote.status === 'Aprovado' ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
+                          } ${quote.status === 'Borrador'
                             ? 'bg-slate-100 text-slate-700 border-slate-300'
                             : quote.status === 'En revisión'
                               ? 'bg-amber-50 text-amber-700 border-amber-200'
@@ -1258,7 +1303,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                                   : quote.status === 'Rechazado'
                                     ? 'bg-red-100 text-red-800 border-red-200'
                                     : 'bg-slate-100 text-slate-700 border-slate-300'
-                        }`}
+                          }`}
                       >
                         <option value="Borrador">Borrador</option>
                         <option value="En revisión">En revisión</option>
@@ -1340,7 +1385,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            
+
             <div className="p-lg space-y-lg text-left">
               {/* Grid principal */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-xl">
@@ -1376,8 +1421,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                     </div>
                     <div>
                       <span className="block text-label-md text-on-surface-variant uppercase font-semibold">Estado</span>
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${
-                        viewingQuote.status === 'Borrador'
+                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${viewingQuote.status === 'Borrador'
                           ? 'bg-slate-100 text-slate-700 border-slate-300'
                           : viewingQuote.status === 'En revisión'
                             ? 'bg-amber-50 text-amber-700 border-amber-200'
@@ -1386,7 +1430,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                               : viewingQuote.status === 'Aprobado' || viewingQuote.status === 'Aprovado'
                                 ? 'bg-secondary-container text-on-secondary-container border-secondary/20'
                                 : 'bg-red-100 text-red-800 border-red-200'
-                      }`}>
+                        }`}>
                         {viewingQuote.status}
                       </span>
                     </div>
@@ -1461,7 +1505,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                     <span className="material-symbols-outlined text-secondary">payments</span>
                     <span>Plan de Cuotas y Facturación</span>
                   </h3>
-                  
+
                   {(() => {
                     const billingTable = findQuoteBillingTable(viewingQuote.id);
                     if (billingTable && billingTable.length > 0) {
@@ -1485,13 +1529,12 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                                     {cuota.date ? cuota.date.split('-').reverse().join('/') : '-'}
                                   </td>
                                   <td className="p-md">
-                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${
-                                      cuota.status === 'Pagada'
+                                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-label-sm font-bold border ${cuota.status === 'Pagada'
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                         : cuota.status === 'Factura emitida'
                                           ? 'bg-blue-50 text-blue-700 border-blue-200'
                                           : 'bg-slate-100 text-slate-700 border-slate-350'
-                                    }`}>
+                                      }`}>
                                       {cuota.status || 'Por facturar'}
                                     </span>
                                   </td>
@@ -1567,7 +1610,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
             {/* Modal Content (Form) */}
             <form onSubmit={handleSubmit} className="p-lg space-y-lg text-left">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-xl">
-                
+
                 {/* Columna Izquierda: Información General, Fechas y Finanzas */}
                 <div className="space-y-lg">
                   {/* Tarjeta de Información de la Cotización */}
@@ -1576,7 +1619,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                       <span className="material-symbols-outlined text-[20px] text-secondary">info</span>
                       Información de la Cotización
                     </h3>
-                    
+
                     {/* Fila 1: N° Presupuesto y Cliente */}
                     <div className="grid grid-cols-3 gap-md">
                       <div className="flex flex-col gap-xs col-span-1">
@@ -1608,13 +1651,13 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                         >
                           <option value="">Seleccione Cliente...</option>
                           {clients.map(c => {
-                            const val = c.name || c.company;
-                            const label = c.name ? `${c.name} (${c.company})` : c.company;
+                            const val = c.id;
+                            const label = c.company + (c.realClient ? ` (${c.realClient})` : '');
                             return (
                               <option key={c.id} value={val}>{label}</option>
                             );
                           })}
-                          {selectedClient && !clients.some(c => (c.name || c.company) === selectedClient) && (
+                          {selectedClient && !clients.some(c => c.id === selectedClient) && (
                             <option value={selectedClient}>{selectedClient}</option>
                           )}
                         </select>
@@ -1834,7 +1877,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                     const roundedSum = Math.round(currentSum * 100) / 100;
                     const expectedTotal = Math.round((parseFloat(subtotal) || 0) * 100) / 100;
                     const diff = expectedTotal - roundedSum;
-                    
+
                     if (Math.abs(diff) >= 0.02) {
                       return (
                         <div className="p-md bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-800 text-body-sm">
@@ -1876,13 +1919,12 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                                 />
                               </td>
                               <td className="p-1 text-center">
-                                <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
-                                  (row.status || 'Por facturar') === 'Pagada'
+                                <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${(row.status || 'Por facturar') === 'Pagada'
                                     ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
                                     : (row.status || 'Por facturar') === 'Factura emitida'
                                       ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
                                       : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-                                }`}>
+                                  }`}>
                                   {row.status || 'Por facturar'}
                                 </span>
                               </td>
@@ -2052,11 +2094,25 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (onDeleteQuote) {
-                      onDeleteQuote(deleteConfirmId);
-                    }
+                  onClick={async () => {
+                    const id = deleteConfirmId;
                     setDeleteConfirmId(null);
+                    if (onDeleteQuote) {
+                      try {
+                        await onDeleteQuote(id);
+                        setNotification({
+                          type: 'success',
+                          title: 'Presupuesto Eliminado',
+                          message: 'El presupuesto ha sido eliminado exitosamente del sistema.'
+                        });
+                      } catch (err) {
+                        setNotification({
+                          type: 'error',
+                          title: 'Error al Eliminar',
+                          message: err.message || 'Ocurrió un error al eliminar el presupuesto.'
+                        });
+                      }
+                    }
                   }}
                   className="flex-1 py-2 bg-error text-white rounded-lg hover:brightness-105 transition-all font-bold text-label-md active:scale-95 shadow-md shadow-error/15"
                 >
@@ -2108,7 +2164,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-xl">
-                
+
                 {/* Columna Izquierda: Información del Proyecto y del Presupuesto */}
                 <div className="lg:col-span-5 space-y-lg">
                   {/* Grupo 1: Datos del Proyecto */}
@@ -2117,7 +2173,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                       <span className="material-symbols-outlined text-[20px] text-secondary">folder</span>
                       Datos del Proyecto
                     </h3>
-                    
+
                     {/* Campo: Nº y Nombre del proyecto */}
                     <div className="flex flex-col gap-xs">
                       <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
@@ -2373,7 +2429,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                           <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-100 text-slate-700 text-label-sm uppercase font-bold sticky top-0">
                               <tr>
-                                <th className="p-2 border-b border-slate-200 text-center w-20">Cuotas</th>
+                                <th className="p-2 border-b border-slate-200 text-center w-20">N° Cuotas</th>
                                 <th className="p-2 border-b border-slate-200">Fecha</th>
                                 <th className="p-2 border-b border-slate-200 text-right w-28">UF</th>
                                 <th className="p-2 border-b border-slate-200">Comentario</th>
@@ -2454,11 +2510,10 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                           const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
                           const totalCuotas = billingTable.reduce((acc, r) => acc + (parseInt(r.cuotas) || 1), 0);
                           return (
-                            <div className={`mt-3 p-3 rounded-lg flex flex-col gap-2 font-bold text-body-sm border ${
-                              isMatch 
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                            <div className={`mt-3 p-3 rounded-lg flex flex-col gap-2 font-bold text-body-sm border ${isMatch
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                 : 'bg-amber-50 text-amber-800 border-amber-200'
-                            }`}>
+                              }`}>
                               <div className="flex flex-wrap justify-between items-center gap-2">
                                 <div className="flex flex-wrap gap-x-md gap-y-1">
                                   <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
@@ -2530,7 +2585,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
       {isReviewModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm">
           <div className="relative bg-white w-full max-w-md overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up">
-            
+
             {/* Header */}
             <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
               <div>
@@ -2550,7 +2605,7 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
 
             {/* Content */}
             <div className="p-lg space-y-lg text-left">
-              
+
               {/* Dropdown Select + Add Button */}
               <div className="flex flex-col gap-xs">
                 <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">
@@ -2634,17 +2689,44 @@ export default function Presupuestos({ quotes, clients, onAddQuote, onDeleteQuot
                 type="button"
                 onClick={handleConfirmReview}
                 disabled={selectedReviewers.length === 0}
-                className={`px-lg py-2 bg-secondary text-white rounded font-bold shadow-lg shadow-secondary/20 transition-all flex items-center gap-2 ${
-                  selectedReviewers.length === 0 
-                    ? 'opacity-50 cursor-not-allowed' 
+                className={`px-lg py-2 bg-secondary text-white rounded font-bold shadow-lg shadow-secondary/20 transition-all flex items-center gap-2 ${selectedReviewers.length === 0
+                    ? 'opacity-50 cursor-not-allowed'
                     : 'hover:brightness-110 active:scale-95'
-                }`}
+                  }`}
               >
                 <span className="material-symbols-outlined text-[18px]">send</span>
                 <span>Enviar</span>
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Reusable Notification Modal (Success / Error) */}
+      {notification && (
+        <div className="fixed inset-0 z-[100] bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-sm mb-2 ${notification.type === 'error' ? 'bg-error-container/20 text-error' : 'bg-secondary-container/20 text-secondary'
+              }`}>
+              <span className="material-symbols-outlined text-[36px]">
+                {notification.type === 'error' ? 'error' : 'check_circle'}
+              </span>
+            </div>
+
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">{notification.title}</h3>
+              <p className="text-body-md text-on-surface-variant">{notification.message}</p>
+            </div>
+
+            <div className="pt-sm">
+              <button
+                onClick={() => setNotification(null)}
+                className="w-full bg-primary text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Aceptar
+              </button>
+            </div>
           </div>
         </div>
       )}
