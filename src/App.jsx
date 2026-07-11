@@ -46,6 +46,7 @@ export default function App() {
   const [facturacionSearch, setFacturacionSearch] = useState('');
 
   const [proyectosSearch, setProyectosSearch] = useState('');
+  const [proyectosTipoFilter, setProyectosTipoFilter] = useState(null);
 
   const [usuariosSearch, setUsuariosSearch] = useState('');
 
@@ -534,6 +535,8 @@ export default function App() {
               onSaveInstallments={handleSaveInstallments}
               searchTerm={proyectosSearch}
               setSearchTerm={setProyectosSearch}
+              tipoFilter={proyectosTipoFilter}
+              setTipoFilter={setProyectosTipoFilter}
             />
           )}
         </>

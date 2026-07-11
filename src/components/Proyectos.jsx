@@ -1,7 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import InstallmentsModal from './InstallmentsModal';
+
+const PROJECT_TYPES = [
+  "Edificio",
+  "Casas y Colegios",
+  "Otros proyectos",
+  "Revision",
+  "BTD",
+  "Recuperacion de gastos",
+  "Industrial",
+  "Perú",
+  "Mind & Lean"
+];
 
 export default function Proyectos({
   projects,
@@ -18,7 +30,9 @@ export default function Proyectos({
   onDeleteProject,
   onSaveInstallments,
   searchTerm,
-  setSearchTerm
+  setSearchTerm,
+  tipoFilter,
+  setTipoFilter
 }) {
   const [expandedProjectId, setExpandedProjectId] = useState(null);
 
@@ -81,14 +95,75 @@ export default function Proyectos({
   const [editRentabilidad, setEditRentabilidad] = useState('');
   const [editAnio, setEditAnio] = useState('');
   const [editCliente, setEditCliente] = useState('');
+  const [editTipo, setEditTipo] = useState('');
+  const [isCustomEditTipo, setIsCustomEditTipo] = useState(false);
 
   // Custom modal / alert states
   const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
   const [projectToDelete, setProjectToDelete] = useState(null);
   const [extraCostToDelete, setExtraCostToDelete] = useState(null);
 
-  // Search filter
+  // Dropdown filter state and click-outside
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const multiselectRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (multiselectRef.current && !multiselectRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Universe of project types (predefined + any custom ones in projects)
+  const uniqueProjectTypes = useMemo(() => {
+    return [...new Set([
+      ...PROJECT_TYPES,
+      ...projects.map(p => p.tipo).filter(Boolean)
+    ])];
+  }, [projects]);
+
+  // Handlers for multiselect
+  const handleToggleTipoOption = (tipoOpt) => {
+    let currentSelected = tipoFilter === null ? [...uniqueProjectTypes] : [...tipoFilter];
+    if (currentSelected.includes(tipoOpt)) {
+      currentSelected = currentSelected.filter(t => t !== tipoOpt);
+    } else {
+      currentSelected.push(tipoOpt);
+    }
+    
+    if (currentSelected.length === uniqueProjectTypes.length) {
+      setTipoFilter(null);
+    } else {
+      setTipoFilter(currentSelected);
+    }
+  };
+
+  const handleSelectAllTipos = () => {
+    setTipoFilter(null);
+  };
+
+  const handleDeselectAllTipos = () => {
+    setTipoFilter([]);
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setTipoFilter(null);
+  };
+
+  // Search and Project Type filter
   const filteredProjects = projects.filter(project => {
+    // 1. Tipo filter
+    if (tipoFilter !== null) {
+      const pTipo = project.tipo || '';
+      if (!tipoFilter.includes(pTipo)) {
+        return false;
+      }
+    }
+    // 2. Search query filter
     const term = searchTerm.toLowerCase();
     return (
       project.projectName.toLowerCase().includes(term) ||
@@ -97,20 +172,20 @@ export default function Proyectos({
     );
   });
 
-  // Calculate KPIs using flat arrays
-  const totalProjects = projects.length;
+  // Calculate KPIs using filteredProjects
+  const totalProjects = filteredProjects.length;
 
-  const totalUF = projects.reduce((acc, p) => {
+  const totalUF = filteredProjects.reduce((acc, p) => {
     const projectBudgets = budgets.filter(b => b.projectId === p.id);
     const budgetSum = projectBudgets.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
     return acc + budgetSum;
   }, 0);
 
-  const avgProfitability = projects.length > 0
-    ? (projects.reduce((acc, p) => acc + (parseFloat(p.rentabilidad) || 0), 0) / projects.length).toFixed(1)
+  const avgProfitability = filteredProjects.length > 0
+    ? (filteredProjects.reduce((acc, p) => acc + (parseFloat(p.rentabilidad) || 0), 0) / filteredProjects.length).toFixed(1)
     : 0;
 
-  const totalSurface = projects.reduce((acc, p) => acc + (parseFloat(p.superficie) || 0), 0);
+  const totalSurface = filteredProjects.reduce((acc, p) => acc + (parseFloat(p.superficie) || 0), 0);
 
   const toggleExpand = (id) => {
     if (expandedProjectId === id) {
@@ -128,6 +203,10 @@ export default function Proyectos({
     setEditRentabilidad(project.rentabilidad || '');
     setEditAnio(project.anio || new Date().getFullYear());
     setEditCliente(project.cliente || '');
+    
+    const existingTipo = project.tipo || '';
+    setEditTipo(existingTipo);
+    setIsCustomEditTipo(existingTipo ? !PROJECT_TYPES.includes(existingTipo) : false);
   };
 
   // Save project general parameters edit
@@ -159,7 +238,8 @@ export default function Proyectos({
         rentabilidad: parseFloat(editRentabilidad) || 0,
         anio: parseInt(editAnio) || new Date().getFullYear(),
         clientId: selectedCli ? selectedCli.id : editingProject.clientId,
-        status: editingProject.status
+        status: editingProject.status,
+        tipo: editTipo || null
       });
       setNotification({
         type: 'success',
@@ -478,27 +558,90 @@ export default function Proyectos({
       </section>
 
       {/* Search and Filters */}
-      <section className="glass-card rounded-xl p-md flex flex-wrap items-end gap-md shadow-sm">
-        <div className="flex-grow max-w-lg min-w-[240px]">
-          <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Proyecto</label>
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-            <input
-              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none"
-              placeholder="Buscar por código, nombre o cliente..."
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+      <section className="glass-card rounded-xl p-md flex flex-col lg:flex-row items-stretch lg:items-end gap-md justify-between shadow-sm">
+        {/* Left Side: Buscar and Limpiar */}
+        <div className="flex flex-wrap items-end gap-md w-full lg:w-auto">
+          <div className="flex flex-col flex-grow max-w-lg min-w-[240px]">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold text-left">Buscar Proyecto</label>
+            <div className="relative w-full">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+              <input
+                className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none h-[38px]"
+                placeholder="Buscar por código, nombre o cliente..."
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleClearFilters}
+            className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
+          >
+            <span className="material-symbols-outlined text-[16px]">clear_all</span>
+            <span>Limpiar</span>
+          </button>
+        </div>
+
+        {/* Right Side: Filters */}
+        <div className="flex flex-wrap items-end gap-md justify-end w-full lg:w-auto">
+          {/* Tipo de Proyecto Multiselect */}
+          <div className="flex flex-col relative w-full sm:w-[220px]" ref={multiselectRef}>
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold text-left">Tipo de Proyecto</label>
+            <button
+              type="button"
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="flex items-center justify-between w-full px-md py-2 bg-white border border-outline-variant rounded-lg text-body-md text-primary font-medium hover:bg-slate-50 transition-all h-[38px] text-left outline-none"
+            >
+              <span className="truncate">
+                {tipoFilter === null || tipoFilter.length === uniqueProjectTypes.length
+                  ? "Todos los tipos"
+                  : tipoFilter.length === 0
+                  ? "Ninguno seleccionado"
+                  : `${tipoFilter.length} seleccionado(s)`}
+              </span>
+              <span className="material-symbols-outlined text-[18px] text-on-surface-variant ml-2 select-none">
+                {isDropdownOpen ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+              </span>
+            </button>
+
+            {isDropdownOpen && (
+              <div className="absolute right-0 top-[105%] bg-white border border-outline-variant rounded-lg shadow-xl z-50 w-full min-w-[220px] max-h-64 overflow-y-auto py-2 flex flex-col gap-1 border-outline-variant/30 animate-fade-in text-left">
+                <button
+                  type="button"
+                  onClick={handleSelectAllTipos}
+                  className="px-4 py-1.5 text-left text-body-sm text-secondary hover:bg-slate-50 font-bold transition-all border-b border-slate-100 last:border-b-0 flex items-center justify-between"
+                >
+                  <span>[ Seleccionar Todos ]</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeselectAllTipos}
+                  className="px-4 py-1.5 text-left text-body-sm text-red-600 hover:bg-slate-50 font-bold transition-all border-b border-slate-100 last:border-b-0 flex items-center justify-between"
+                >
+                  <span>[ Limpiar Selección ]</span>
+                </button>
+                {uniqueProjectTypes.map((tipoOpt) => {
+                  const isChecked = tipoFilter === null || tipoFilter.includes(tipoOpt);
+                  return (
+                    <label
+                      key={tipoOpt}
+                      className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-3 text-body-md font-medium text-primary select-none transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleTipoOption(tipoOpt)}
+                        className="rounded border-slate-300 text-secondary focus:ring-secondary focus:ring-offset-0 focus:ring-1"
+                      />
+                      <span className="truncate">{tipoOpt}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
-        <button
-          onClick={() => setSearchTerm('')}
-          className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
-        >
-          <span className="material-symbols-outlined text-[16px]">clear_all</span>
-          <span>Limpiar</span>
-        </button>
       </section>
 
       {/* Projects List */}
@@ -539,6 +682,14 @@ export default function Proyectos({
                         </span>
                         <span className="text-outline-variant">•</span>
                         <span>Año {project.anio}</span>
+                        {project.tipo && (
+                          <>
+                            <span className="text-outline-variant">•</span>
+                            <span className="bg-secondary-container text-primary text-[11px] font-bold px-2 py-0.5 rounded-full border border-secondary/20 uppercase tracking-wider">
+                              {project.tipo}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -862,6 +1013,42 @@ export default function Proyectos({
                       ))}
                     </select>
                   </div>
+                </div>
+
+                {/* Campo: Tipo de Proyecto */}
+                <div className="flex flex-col gap-xs">
+                  <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">Tipo de Proyecto</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-medium text-primary"
+                    value={isCustomEditTipo ? 'custom' : editTipo}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'custom') {
+                        setIsCustomEditTipo(true);
+                        setEditTipo('');
+                      } else {
+                        setIsCustomEditTipo(false);
+                        setEditTipo(val);
+                      }
+                    }}
+                  >
+                    <option value="">Seleccione un tipo...</option>
+                    {PROJECT_TYPES.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                    <option value="custom">Otro (Ingresar manualmente)...</option>
+                  </select>
+
+                  {isCustomEditTipo && (
+                    <input
+                      type="text"
+                      className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white animate-fade-in mt-1 font-medium text-primary"
+                      placeholder="Escriba el tipo de proyecto..."
+                      value={editTipo}
+                      onChange={(e) => setEditTipo(e.target.value)}
+                      required
+                    />
+                  )}
                 </div>
               </div>
 

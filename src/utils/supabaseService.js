@@ -72,7 +72,8 @@ const mapProjectFromDb = (dbProject) => ({
   anio: dbProject.year,
   cliente: dbProject.clients ? dbProject.clients.company_name : '',
   clientId: dbProject.client_id,
-  status: dbProject.status
+  status: dbProject.status,
+  tipo: dbProject.tipo
 });
 
 const mapInstallmentStatusToDb = (status) => {
@@ -494,7 +495,8 @@ export const supabaseService = {
       superficie: parseFloat(project.superficie) || 0,
       rentabilidad: parseFloat(project.rentabilidad) || 0,
       year: parseInt(project.anio) || new Date().getFullYear(),
-      status: project.status || 'Activo'
+      status: project.status || 'Activo',
+      tipo: project.tipo || null
     };
 
     if (project.id && isUuid(project.id)) {
@@ -665,7 +667,8 @@ export const supabaseService = {
       superficie: parseFloat(projectForm.superficie) || 0,
       rentabilidad: parseFloat(projectForm.rentabilidad) || 0,
       year: parseInt(projectForm.anio) || new Date().getFullYear(),
-      status: 'Activo'
+      status: 'Activo',
+      tipo: projectForm.tipo || null
     };
 
     let dbProj, projError;

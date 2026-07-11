@@ -2,6 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import mammoth from 'mammoth';
 import InstallmentsModal from './InstallmentsModal';
 
+const PROJECT_TYPES = [
+  "Edificio",
+  "Casas y Colegios",
+  "Otros proyectos",
+  "Revision",
+  "BTD",
+  "Recuperacion de gastos",
+  "Industrial",
+  "Perú",
+  "Mind & Lean"
+];
+
 // Helper to parse date strings of format DD/MM/YYYY or YYYY-MM-DD to Date object
 const parseDate = (dateStr) => {
   if (!dateStr) return null;
@@ -150,6 +162,8 @@ export default function Presupuestos({
   const [matchedProjectId, setMatchedProjectId] = useState(null);
   const [prefilledFromProjectId, setPrefilledFromProjectId] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [tipo, setTipo] = useState('');
+  const [isCustomTipo, setIsCustomTipo] = useState(false);
   const suggestionsRef = useRef(null);
 
   // Reviewers modal states
@@ -318,6 +332,9 @@ export default function Presupuestos({
         setAnio(existing.anio || new Date().getFullYear());
         setCliente(existing.cliente || '');
         setPrefilledFromProjectId(existing.id);
+        const existingTipo = existing.tipo || '';
+        setTipo(existingTipo);
+        setIsCustomTipo(existingTipo ? !PROJECT_TYPES.includes(existingTipo) : false);
       }
     } else {
       setMatchedProjectId(null);
@@ -533,7 +550,8 @@ export default function Presupuestos({
       clientId: approvingQuote.clientId,
       superficie: parseFloat(superficie) || 0,
       rentabilidad: parseFloat(rentabilidad) || 0,
-      anio: parseInt(anio) || new Date().getFullYear()
+      anio: parseInt(anio) || new Date().getFullYear(),
+      tipo: tipo || null
     };
 
     try {
@@ -551,6 +569,8 @@ export default function Presupuestos({
       setMatchedProjectId(null);
       setPrefilledFromProjectId(null);
       setShowSuggestions(false);
+      setTipo('');
+      setIsCustomTipo(false);
     } catch (err) {
       setValidationError(err.message || 'Error al aprobar presupuesto.');
     }
@@ -591,6 +611,8 @@ export default function Presupuestos({
 
         const currentYear = new Date().getFullYear();
         setAnio(currentYear);
+        setTipo('');
+        setIsCustomTipo(false);
 
         setValorProyecto(quote.amount || 0);
 
@@ -2155,6 +2177,8 @@ export default function Presupuestos({
                   setMatchedProjectId(null);
                   setPrefilledFromProjectId(null);
                   setShowSuggestions(false);
+                  setTipo('');
+                  setIsCustomTipo(false);
                 }}
                 className="p-2 hover:bg-slate-100 rounded-full transition-all"
               >
@@ -2285,6 +2309,42 @@ export default function Presupuestos({
                         placeholder="Ej: 2026"
                         required
                       />
+                    </div>
+
+                    {/* Fila: Tipo de Proyecto */}
+                    <div className="flex flex-col gap-xs">
+                      <label className="text-label-sm text-on-surface-variant uppercase tracking-wider font-bold">Tipo de Proyecto</label>
+                      <select
+                        className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white font-medium text-primary"
+                        value={isCustomTipo ? 'custom' : tipo}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'custom') {
+                            setIsCustomTipo(true);
+                            setTipo('');
+                          } else {
+                            setIsCustomTipo(false);
+                            setTipo(val);
+                          }
+                        }}
+                      >
+                        <option value="">Seleccione un tipo...</option>
+                        {PROJECT_TYPES.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                        <option value="custom">Otro (Ingresar manualmente)...</option>
+                      </select>
+
+                      {isCustomTipo && (
+                        <input
+                          type="text"
+                          className="w-full border border-slate-200 rounded-lg text-body-md py-2 px-3 focus:ring-1 focus:ring-secondary focus:border-secondary outline-none transition-all bg-white animate-fade-in mt-1 font-medium text-primary"
+                          placeholder="Escriba el tipo de proyecto..."
+                          value={tipo}
+                          onChange={(e) => setTipo(e.target.value)}
+                          required
+                        />
+                      )}
                     </div>
                   </div>
 
