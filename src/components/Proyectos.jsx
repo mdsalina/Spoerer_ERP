@@ -681,6 +681,7 @@ export default function Proyectos({
                               <span className="material-symbols-outlined text-[16px]">link_off</span>
                               <span>Desasociar</span>
                             </button>
+                          </div>
                             {/* Billing Table */}
                            <div className="space-y-sm text-slate-800">
                              <h5 className="text-body-sm font-bold text-slate-700 flex items-center gap-1.5">
@@ -741,39 +742,6 @@ export default function Proyectos({
                                <p className="text-body-sm text-slate-500 italic py-2">No hay cuotas registradas para este presupuesto.</p>
                              )}
  
-                             {/* Verification Total Bar */}
-                             {budgetInstallments.length > 0 && (() => {
-                               const currentSum = budgetInstallments.reduce((acc, r) => acc + (parseFloat(r.uf) || 0), 0);
-                               const roundedSum = Math.round(currentSum * 100) / 100;
-                               const expectedTotal = Math.round((parseFloat(budget.amount) || 0) * 100) / 100;
-                               const isMatch = Math.abs(roundedSum - expectedTotal) < 0.02;
-                               return (
-                                 <div className={`p-3 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-bold text-body-sm border ${isMatch
-                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                   : 'bg-amber-50 text-amber-800 border-amber-200'
-                                   }`}>
-                                   <div className="flex flex-wrap gap-x-md gap-y-1">
-                                     <span>Suma Planificada: {roundedSum.toFixed(2)} UF</span>
-                                     <span className="text-slate-350">/</span>
-                                     <span>Monto Requerido: {expectedTotal.toFixed(2)} UF</span>
-                                   </div>
-                                   <div>
-                                     {isMatch ? (
-                                       <span className="flex items-center gap-1 text-emerald-600">
-                                         <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                                         Montos coinciden
-                                       </span>
-                                     ) : (
-                                       <span className="flex items-center gap-1 text-amber-600">
-                                         <span className="material-symbols-outlined text-[18px]">warning</span>
-                                         Diferencia: {(expectedTotal - roundedSum).toFixed(2)} UF
-                                       </span>
-                                     )}
-                                   </div>
-                                 </div>
-                               );
-                             })()}
- 
                              {/* Edit Installments Trigger Button */}
                              <div className="flex justify-end pt-xs">
                                <button
@@ -793,7 +761,6 @@ export default function Proyectos({
                                </button>
                              </div>
                             </div>
-                          </div>
                         </div>
                       );
                     })}

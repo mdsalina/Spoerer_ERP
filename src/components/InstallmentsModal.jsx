@@ -44,7 +44,7 @@ export default function InstallmentsModal({
         if (idx === index) {
           return {
             ...inst,
-            [field]: field === 'uf' ? (parseFloat(value) || 0) : value
+            [field]: (field === 'uf' || field === 'total_clp') ? (parseFloat(value) || 0) : value
           };
         }
         return inst;
@@ -194,7 +194,7 @@ export default function InstallmentsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4 text-slate-800">
-      <div className="relative bg-white w-full rounded-xl shadow-2xl flex flex-col border border-outline-variant animate-scale-up max-w-5xl max-h-[90vh]">
+      <div className="relative bg-white w-full rounded-xl shadow-2xl flex flex-col border border-outline-variant animate-scale-up max-w-7xl max-h-[90vh]">
 
         {/* Cabecera */}
         <div className="px-lg py-md border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10 rounded-t-xl">
@@ -209,7 +209,6 @@ export default function InstallmentsModal({
               {budgetBackupFiles && budgetBackupFiles.length > 0 && (
                 <>
                   <span>|</span>
-                  <span className="text-on-surface-variant font-bold text-xs uppercase tracking-wider">Respaldos:</span>
                   <div className="flex items-center gap-1.5">
                     {budgetBackupFiles.map((file, idx) => {
                       const isPdf = file.name.toLowerCase().endsWith('.pdf');
@@ -258,28 +257,24 @@ export default function InstallmentsModal({
 
           {/* Tabla de cuotas */}
           <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[380px] overflow-y-auto custom-scrollbar flex-grow">
-            <table className="w-full text-left border-collapse min-w-[1000px]">
+            <table className="w-full text-left border-collapse min-w-[1200px]">
               <thead className="bg-slate-100 text-slate-700 text-label-sm uppercase font-bold sticky top-0 border-b border-slate-200">
                 <tr className="text-body-sm font-semibold">
                   <th className="p-2 border-b border-slate-200 text-center w-14">Nº Cuota</th>
-                  <th className="p-2 border-b border-slate-200 w-36">Fecha Planificada</th>
+                  <th className="p-2 border-b border-slate-200 text-center w-36">Fecha Planificada</th>
                   <th className="p-2 border-b border-slate-200 text-center w-16">Conf.</th>
-                  <th className="p-2 border-b border-slate-200 w-24 text-right">Monto (UF)</th>
-                  <th className="p-2 border-b border-slate-200 w-28 text-center">Estado</th>
-                  <th className="p-2 border-b border-slate-200 w-28">Folio Factura</th>
-                  <th className="p-2 border-b border-slate-200 w-36 text-right">Detalle Pesos (CLP)</th>
-                  <th className="p-2 border-b border-slate-200 w-36">Fecha Pago</th>
-                  <th className="p-2 border-b">Comentario</th>
-                  <th className="p-2 border-b text-center w-24">Acciones</th>
+                  <th className="p-2 border-b border-slate-200 text-center w-28">Monto (UF)</th>
+                  <th className="p-2 border-b border-slate-200 text-center w-28">Estado</th>
+                  <th className="p-2 border-b border-slate-200 text-center w-28">Folio Factura</th>
+                  <th className="p-2 border-b border-slate-200 text-center w-36">Detalle Pesos (CLP)</th>
+                  <th className="p-2 border-b border-slate-200 text-center w-36">Fecha Pago</th>
+                  <th className="p-2 border-b text-center">Comentario</th>
+                  <th className="p-2 border-b text-center w-40">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-body-sm text-slate-700">
                 {localInstallments.length > 0 ? (
                   localInstallments.map((row, idx) => {
-                    const clpText = row.total_clp
-                      ? `$${row.total_clp.toLocaleString('es-CL')}`
-                      : '-';
-
                     return (
                       <tr key={row.id || idx} className="hover:bg-slate-50/50 transition-colors">
                         {/* Nº Cuota */}
@@ -294,7 +289,7 @@ export default function InstallmentsModal({
                               type="text"
                               readOnly
                               value={row.date ? row.date.split('-').reverse().join('/') : ''}
-                              className={`w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 ${row.dateConfirmed ? 'text-emerald-700 font-semibold' : ''
+                              className={`w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 text-center ${row.dateConfirmed ? 'text-emerald-700 font-semibold' : ''
                                 }`}
                               placeholder="dd/mm/yyyy"
                             />
@@ -312,22 +307,24 @@ export default function InstallmentsModal({
 
                         {/* Confirmada (Checkbox) */}
                         <td className="p-1 text-center">
-                          <input
-                            type="checkbox"
-                            checked={row.dateConfirmed || false}
-                            onChange={(e) => handleFieldChange(idx, 'dateConfirmed', e.target.checked)}
-                            className="w-4 h-4 text-secondary border-slate-350 rounded focus:ring-secondary/20 focus:ring-1 cursor-pointer"
-                            title="Confirmar fecha planificada"
-                          />
+                          <div className="flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={row.dateConfirmed || false}
+                              onChange={(e) => handleFieldChange(idx, 'dateConfirmed', e.target.checked)}
+                              className="w-4 h-4 text-secondary border-slate-350 rounded focus:ring-secondary/20 focus:ring-1 cursor-pointer"
+                              title="Confirmar fecha planificada"
+                            />
+                          </div>
                         </td>
 
                         {/* Monto UF */}
-                        <td className="p-1 w-24">
+                        <td className="p-1 w-28">
                           <input
                             type="number"
                             value={row.uf || ''}
                             onChange={(e) => handleFieldChange(idx, 'uf', e.target.value)}
-                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-right"
+                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-center"
                             step="0.01"
                             placeholder="0.00"
                           />
@@ -335,14 +332,16 @@ export default function InstallmentsModal({
 
                         {/* Estado */}
                         <td className="p-1 text-center w-28">
-                          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${row.status === 'Pagada'
-                            ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
-                            : row.status === 'Factura emitida'
-                              ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
-                              : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-                            }`}>
-                            {row.status || 'Por facturar'}
-                          </span>
+                          <div className="flex items-center justify-center">
+                            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${row.status === 'Pagada'
+                              ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
+                              : row.status === 'Factura emitida'
+                                ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
+                                : 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                              }`}>
+                              {row.status || 'Por facturar'}
+                            </span>
+                          </div>
                         </td>
 
                         {/* Folio Factura */}
@@ -351,14 +350,26 @@ export default function InstallmentsModal({
                             type="text"
                             value={row.invoiceNumber || ''}
                             onChange={(e) => handleFieldChange(idx, 'invoiceNumber', e.target.value)}
-                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
+                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center"
                             placeholder="..."
                           />
                         </td>
 
-                        {/* Detalle Pesos */}
-                        <td className="p-1 text-right pr-3 font-semibold text-slate-600 text-body-sm">
-                          {clpText}
+                        {/* Detalle Pesos (CLP) - EDITABLE */}
+                        <td className="p-1 w-36">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <span className="text-slate-500 font-bold text-body-sm">$</span>
+                            <input
+                              type="text"
+                              value={row.total_clp !== null && row.total_clp !== undefined ? Math.round(row.total_clp).toLocaleString('es-CL') : ''}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/\D/g, '');
+                                handleFieldChange(idx, 'total_clp', raw);
+                              }}
+                              className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-center"
+                              placeholder="0"
+                            />
+                          </div>
                         </td>
 
                         {/* Fecha Pago */}
@@ -368,7 +379,7 @@ export default function InstallmentsModal({
                               type="text"
                               readOnly
                               value={row.actualPaymentDate ? row.actualPaymentDate.split('-').reverse().join('/') : ''}
-                              className="w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6"
+                              className="w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 text-center"
                               placeholder="dd/mm/yyyy"
                             />
                             <input
@@ -390,7 +401,7 @@ export default function InstallmentsModal({
                             list={`comments-options-${idx}`}
                             value={row.comment || ''}
                             onChange={(e) => handleFieldChange(idx, 'comment', e.target.value)}
-                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm"
+                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center"
                             placeholder="..."
                           />
                           <datalist id={`comments-options-${idx}`}>
@@ -408,14 +419,14 @@ export default function InstallmentsModal({
                         </td>
 
                         {/* Acciones */}
-                        <td className="p-1 text-center w-24">
-                          <div className="flex items-center justify-center gap-xs">
+                        <td className="p-1 text-center w-40">
+                          <div className="flex items-center justify-center gap-2">
 
                             {/* Editar Respaldos */}
                             <button
                               type="button"
                               onClick={() => setEditingFileIdx(idx)}
-                              className={`p-1 rounded hover:bg-slate-100 transition-all flex items-center justify-center relative ${(row.invoiceFileUrl || row.invoiceFileObject || row.paymentBackupUrl || row.paymentBackupFileObject)
+                              className={`p-1.5 rounded hover:bg-slate-100 transition-all flex items-center justify-center relative ${(row.invoiceFileUrl || row.invoiceFileObject || row.paymentBackupUrl || row.paymentBackupFileObject)
                                 ? 'text-emerald-600'
                                 : 'text-slate-400 hover:text-slate-600'
                                 }`}
@@ -431,7 +442,7 @@ export default function InstallmentsModal({
                             <button
                               type="button"
                               onClick={() => handleDeleteRow(idx)}
-                              className="p-1 hover:bg-red-50 text-error hover:text-red-750 rounded transition-all flex items-center justify-center"
+                              className="p-1.5 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center"
                               title="Eliminar cuota"
                             >
                               <span className="material-symbols-outlined text-[18px]">delete</span>
@@ -455,45 +466,10 @@ export default function InstallmentsModal({
         </div>
 
         {/* Pie de modal */}
-        <div className="p-lg border-t border-outline-variant/30 sticky bottom-0 bg-white z-10 rounded-b-xl flex flex-col sm:flex-row justify-between items-center gap-md">
-          {/* Resumen de montos */}
-          {(() => {
-            const totalUF = localInstallments.reduce((sum, inst) => sum + (parseFloat(inst.uf) || 0), 0);
-            const roundedTotal = Math.round(totalUF * 100) / 100;
-            const expectedTotal = Math.round((parseFloat(budgetAmount) || 0) * 100) / 100;
-            const isMatch = Math.abs(roundedTotal - expectedTotal) < 0.02;
+        <div className="p-lg border-t border-outline-variant/30 sticky bottom-0 bg-white z-10 rounded-b-xl flex flex-col gap-md">
 
-            return (
-              <div className={`px-md py-sm rounded-lg flex items-center gap-sm font-bold text-body-sm border w-full sm:w-auto text-left justify-between sm:justify-start ${isMatch
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}>
-                <div className="flex flex-wrap gap-x-base items-center">
-                  <span>Cuotas: {localInstallments.length}</span>
-                  <span className="text-slate-350">|</span>
-                  <span>Suma Planificada: {roundedTotal.toFixed(2)} UF</span>
-                  <span className="text-slate-350">/</span>
-                  <span>Requerido: {expectedTotal.toFixed(2)} UF</span>
-                </div>
-                <div className="flex items-center">
-                  {isMatch ? (
-                    <span className="flex items-center gap-0.5 text-emerald-600">
-                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                      <span>Coincide</span>
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-0.5 text-amber-600">
-                      <span className="material-symbols-outlined text-[18px]">warning</span>
-                      <span>Diferencia: {(expectedTotal - roundedTotal).toFixed(2)} UF</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Botones de acción */}
-          <div className="flex justify-end gap-md w-full sm:w-auto items-center">
+          {/* Fila 1: Botón Agregar Cuota (Colocado SOBRE el contenedor de validación de suma) */}
+          <div className="flex justify-start">
             <button
               type="button"
               onClick={handleAddRow}
@@ -502,35 +478,80 @@ export default function InstallmentsModal({
               <span className="material-symbols-outlined text-[18px]">add</span>
               <span>Agregar Cuota</span>
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="px-lg py-2 border border-outline-variant rounded-lg text-on-surface hover:bg-slate-50 transition-all font-semibold active:scale-95 disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className="bg-primary text-white px-xl py-2 rounded-lg font-semibold shadow-sm hover:bg-primary-container active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-50"
-            >
-              {isSaving ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>Guardando...</span>
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined text-[18px]">save</span>
-                  <span>Guardar</span>
-                </>
-              )}
-            </button>
+          </div>
+
+          {/* Fila 2: Contenedor de validación y botones de guardado */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-md">
+
+            {/* Contenedor de validación de suma */}
+            {(() => {
+              const totalUF = localInstallments.reduce((sum, inst) => sum + (parseFloat(inst.uf) || 0), 0);
+              const roundedTotal = Math.round(totalUF * 100) / 100;
+              const expectedTotal = Math.round((parseFloat(budgetAmount) || 0) * 100) / 100;
+              const isMatch = Math.abs(roundedTotal - expectedTotal) < 0.02;
+
+              return (
+                <div className={`px-md py-sm rounded-lg flex items-center gap-sm font-bold text-body-sm border w-full sm:w-auto text-left justify-between sm:justify-start ${isMatch
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                  <div className="flex flex-wrap gap-x-base items-center text-slate-700">
+                    <span>Cuotas: {localInstallments.length}</span>
+                    <span className="text-slate-350">|</span>
+                    <span>Suma Planificada: {roundedTotal.toFixed(2)} UF</span>
+                    <span className="text-slate-350">/</span>
+                    <span>Requerido: {expectedTotal.toFixed(2)} UF</span>
+                  </div>
+                  <div className="flex items-center">
+                    {isMatch ? (
+                      <span className="flex items-center gap-0.5 text-emerald-600">
+                        <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                        <span>Coincide</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-0.5 text-amber-600">
+                        <span className="material-symbols-outlined text-[18px]">warning</span>
+                        <span>Diferencia: {(expectedTotal - roundedTotal).toFixed(2)} UF</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Cancelar y Guardar */}
+            <div className="flex justify-end gap-md w-full sm:w-auto items-center">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSaving}
+                className="px-lg py-2 border border-outline-variant rounded-lg text-on-surface hover:bg-slate-50 transition-all font-semibold active:scale-95 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="bg-secondary text-white px-xl py-2 rounded-lg font-semibold shadow-sm hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[18px]">save</span>
+                    <span>Guardar</span>
+                  </>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
 
