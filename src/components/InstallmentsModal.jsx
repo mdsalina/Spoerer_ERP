@@ -1,6 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { supabaseService } from '../utils/supabaseService';
 
+// Helper: Sumar meses de forma segura considerando el fin de mes y años bisiestos
+function addMonths(dateStr, monthsToAdd) {
+  if (!dateStr) return '';
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const tempDate = new Date(year, month - 1 + monthsToAdd, 1);
+  const targetYear = tempDate.getFullYear();
+  const targetMonth = tempDate.getMonth() + 1; // 1-indexed
+  
+  const maxDays = new Date(targetYear, targetMonth, 0).getDate();
+  const targetDay = Math.min(day, maxDays);
+  
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${targetYear}-${pad(targetMonth)}-${pad(targetDay)}`;
+}
+
+// Helper: Calcular metadatos de los grupos (master, miembros y orden)
+const getGroupMetadata = (installments) => {
+  const groups = {};
+  installments.forEach((inst, index) => {
+    if (inst.grupo) {
+      if (!groups[inst.grupo]) {
+        groups[inst.grupo] = [];
+      }
+      groups[inst.grupo].push({ inst, index });
+    }
+  });
+
+  const metadata = {};
+  Object.entries(groups).forEach(([groupName, members]) => {
+    // Ordenar miembros: primero por fecha ascendente, luego por index original en el arreglo
+    members.sort((a, b) => {
+      const dateA = a.inst.date || '';
+      const dateB = b.inst.date || '';
+      if (dateA < dateB) return -1;
+      if (dateA > dateB) return 1;
+      return a.index - b.index;
+    });
+
+    const master = members[0];
+    metadata[groupName] = {
+      masterId: master.inst.id,
+      members: members.map(m => m.inst.id),
+      orderedMembers: members.map(m => m.inst)
+    };
+  });
+  return metadata;
+};
+
+// Helper: Obtener el siguiente ID de grupo disponible (G1, G2, etc.)
+const getNextGroupId = (installments) => {
+  const existingGroups = new Set(installments.map(inst => inst.grupo).filter(Boolean));
+  let counter = 1;
+  while (existingGroups.has(`G${counter}`)) {
+    counter++;
+  }
+  return `G${counter}`;
+};
+
 export default function InstallmentsModal({
   isOpen,
   onClose,
@@ -17,6 +75,7 @@ export default function InstallmentsModal({
   const [editingFileIdx, setEditingFileIdx] = useState(null);
   const [validationError, setValidationError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   useEffect(() => {
     if (isOpen) {
@@ -33,23 +92,56 @@ export default function InstallmentsModal({
       );
       setValidationError('');
       setIsSaving(false);
+      setSelectedIds(new Set());
     }
   }, [isOpen, initialInstallments]);
 
   if (!isOpen) return null;
 
   const handleFieldChange = (index, field, value) => {
-    setLocalInstallments(prev =>
-      prev.map((inst, idx) => {
+    setLocalInstallments(prev => {
+      const metadata = getGroupMetadata(prev);
+      const instToChange = prev[index];
+      const groupId = instToChange.grupo;
+      const isMaster = groupId && metadata[groupId]?.masterId === instToChange.id;
+
+      return prev.map((inst, idx) => {
+        let newVal = value;
+        if (field === 'uf' || field === 'total_clp') {
+          newVal = parseFloat(value) || 0;
+        }
+
         if (idx === index) {
           return {
             ...inst,
-            [field]: (field === 'uf' || field === 'total_clp') ? (parseFloat(value) || 0) : value
+            [field]: newVal
           };
         }
+
+        // Propagate to slaves if editing the master row
+        if (isMaster && inst.grupo === groupId) {
+          const orderedMembers = metadata[groupId].orderedMembers;
+          const slaveIndex = orderedMembers.findIndex(m => m.id === inst.id);
+          
+          if (slaveIndex > 0) { // It's a slave
+            if (field === 'date') {
+              return {
+                ...inst,
+                date: addMonths(value, slaveIndex)
+              };
+            }
+            if (field === 'dateConfirmed' || field === 'uf' || field === 'comment') {
+              return {
+                ...inst,
+                [field]: newVal
+              };
+            }
+          }
+        }
+
         return inst;
-      })
-    );
+      });
+    });
   };
 
   const handleAddRow = () => {
@@ -96,6 +188,14 @@ export default function InstallmentsModal({
   };
 
   const handleDeleteRow = (index) => {
+    const deletedInst = localInstallments[index];
+    if (deletedInst) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(deletedInst.id);
+        return next;
+      });
+    }
     setLocalInstallments(prev => {
       const filtered = prev.filter((_, idx) => idx !== index);
       // Recalculate sequential installment numbers
@@ -106,6 +206,122 @@ export default function InstallmentsModal({
       }));
     });
   };
+
+  const toggleSelectRow = (id, isSlave) => {
+    if (isSlave) return;
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleGroup = () => {
+    if (selectedIds.size < 2) return;
+
+    setLocalInstallments(prev => {
+      // 1. Identify which groups are affected by the selection
+      const affectedGroups = new Set();
+      prev.forEach(inst => {
+        if (selectedIds.has(inst.id) && inst.grupo) {
+          affectedGroups.add(inst.grupo);
+        }
+      });
+
+      // 2. Clear grupo for any installment that belongs to an affected group
+      let baseInstallments = prev.map(inst => {
+        if (inst.grupo && affectedGroups.has(inst.grupo)) {
+          const { grupo: _, ...rest } = inst;
+          return rest;
+        }
+        return inst;
+      });
+
+      // 3. Assign the new group to the selected ones
+      const nextGroupId = getNextGroupId(baseInstallments);
+      let updated = baseInstallments.map(inst => {
+        if (selectedIds.has(inst.id)) {
+          return {
+            ...inst,
+            grupo: nextGroupId
+          };
+        }
+        return inst;
+      });
+
+      // 4. Propagate master's values in the new group
+      const groupMetadata = getGroupMetadata(updated);
+      const newGroupMeta = groupMetadata[nextGroupId];
+      if (!newGroupMeta) return updated;
+
+      const masterId = newGroupMeta.masterId;
+      const masterInst = updated.find(i => i.id === masterId);
+      if (!masterInst) return updated;
+
+      const orderedMembers = newGroupMeta.orderedMembers;
+      updated = updated.map(inst => {
+        if (inst.grupo === nextGroupId) {
+          const slaveIndex = orderedMembers.findIndex(m => m.id === inst.id);
+          if (slaveIndex === 0) {
+            return inst;
+          } else if (slaveIndex > 0) {
+            return {
+              ...inst,
+              date: addMonths(masterInst.date, slaveIndex),
+              uf: masterInst.uf,
+              dateConfirmed: masterInst.dateConfirmed,
+              comment: masterInst.comment
+            };
+          }
+        }
+        return inst;
+      });
+
+      return updated;
+    });
+
+    setSelectedIds(new Set());
+  };
+
+  const handleUngroup = () => {
+    setLocalInstallments(prev => {
+      const metadata = getGroupMetadata(prev);
+      const groupsToUngroup = new Set();
+      
+      selectedIds.forEach(id => {
+        const inst = prev.find(i => i.id === id);
+        if (inst && inst.grupo) {
+          const isMaster = metadata[inst.grupo]?.masterId === inst.id;
+          if (isMaster) {
+            groupsToUngroup.add(inst.grupo);
+          }
+        }
+      });
+
+      if (groupsToUngroup.size === 0) return prev;
+
+      return prev.map(inst => {
+        if (inst.grupo && groupsToUngroup.has(inst.grupo)) {
+          const { grupo: _, ...rest } = inst;
+          return rest;
+        }
+        return inst;
+      });
+    });
+    setSelectedIds(new Set());
+  };
+
+  const groupMetadata = getGroupMetadata(localInstallments);
+  const canGroup = selectedIds.size >= 2;
+  const canUngroup = Array.from(selectedIds).some(id => {
+    const inst = localInstallments.find(i => i.id === id);
+    if (!inst || !inst.grupo) return false;
+    return groupMetadata[inst.grupo]?.masterId === inst.id;
+  });
 
   // Execute actual uploads and deletes
   const processFilesAndGetUrls = async (inst) => {
@@ -176,6 +392,8 @@ export default function InstallmentsModal({
         delete updatedInst.paymentBackupFileObject;
         delete updatedInst.deleteInvoiceFile;
         delete updatedInst.deletePaymentBackup;
+        // Strip group property before saving
+        delete updatedInst.grupo;
         processedInstallments.push(updatedInst);
       }
 
@@ -256,9 +474,9 @@ export default function InstallmentsModal({
           )}
 
           {/* Tabla de cuotas */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[380px] overflow-y-auto custom-scrollbar flex-grow">
+          <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-[550px] overflow-y-auto custom-scrollbar flex-grow">
             <table className="w-full text-left border-collapse min-w-[1200px]">
-              <thead className="bg-slate-100 text-slate-700 text-label-sm uppercase font-bold sticky top-0 border-b border-slate-200">
+              <thead className="bg-slate-100 text-slate-700 text-label-sm uppercase font-bold sticky top-0 border-b border-slate-200 z-20">
                 <tr className="text-body-sm font-semibold">
                   <th className="p-2 border-b border-slate-200 text-center w-14">Nº Cuota</th>
                   <th className="p-2 border-b border-slate-200 text-center w-36">Fecha Planificada</th>
@@ -274,12 +492,51 @@ export default function InstallmentsModal({
               </thead>
               <tbody className="divide-y divide-slate-100 text-body-sm text-slate-700">
                 {localInstallments.length > 0 ? (
-                  localInstallments.map((row, idx) => {
+                   localInstallments.map((row, idx) => {
+                    const isMaster = row.grupo && groupMetadata[row.grupo]?.masterId === row.id;
+                    const isSlave = row.grupo && groupMetadata[row.grupo]?.masterId !== row.id;
+
                     return (
-                      <tr key={row.id || idx} className="hover:bg-slate-50/50 transition-colors">
+                      <tr
+                        key={row.id || idx}
+                        className={`transition-colors ${
+                          isSlave
+                            ? 'bg-slate-100/40 text-slate-400 opacity-70'
+                            : isMaster
+                              ? 'bg-emerald-50/10 hover:bg-emerald-50/20'
+                              : 'hover:bg-slate-50/50'
+                        }`}
+                      >
                         {/* Nº Cuota */}
-                        <td className="p-2 text-center font-bold text-slate-500 bg-slate-50/50">
-                          {row.numQuota}
+                        <td
+                          onClick={() => toggleSelectRow(row.id, isSlave)}
+                          className={`p-2 text-center font-bold text-slate-500 text-body-sm select-none transition-all ${
+                            isSlave
+                              ? 'bg-slate-100/40 cursor-not-allowed'
+                              : 'cursor-pointer hover:bg-slate-200 bg-slate-50/50'
+                          }`}
+                        >
+                          <div className="flex flex-col items-center justify-center gap-1">
+                            <span className={`text-[13px] px-2 py-0.5 rounded-md font-bold transition-all ${
+                              selectedIds.has(row.id)
+                                ? 'bg-secondary text-white ring-2 ring-secondary/20 scale-105'
+                                : 'text-slate-700 hover:text-slate-900'
+                            }`}>
+                              {row.numQuota}
+                            </span>
+                            {row.grupo && (
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                isMaster
+                                  ? 'bg-secondary-container text-secondary ring-1 ring-secondary/30'
+                                  : 'bg-slate-250 text-slate-600 ring-1 ring-slate-350'
+                              }`}>
+                                <span className="material-symbols-outlined text-[11px]">
+                                  {isMaster ? 'link' : 'link_off'}
+                                </span>
+                                {row.grupo}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Fecha Planificada */}
@@ -289,15 +546,19 @@ export default function InstallmentsModal({
                               type="text"
                               readOnly
                               value={row.date ? row.date.split('-').reverse().join('/') : ''}
-                              className={`w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 text-center ${row.dateConfirmed ? 'text-emerald-700 font-semibold' : ''
-                                }`}
+                              className={`w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 text-center ${
+                                row.dateConfirmed ? 'text-emerald-700 font-semibold' : ''
+                              } ${isSlave ? 'text-slate-400 font-normal' : ''}`}
                               placeholder="dd/mm/yyyy"
                             />
                             <input
                               type="date"
                               value={row.date || ''}
+                              disabled={isSlave}
                               onChange={(e) => handleFieldChange(idx, 'date', e.target.value)}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                              className={`absolute inset-0 w-full h-full opacity-0 z-10 ${
+                                isSlave ? 'cursor-not-allowed' : 'cursor-pointer'
+                              }`}
                             />
                             <span className="material-symbols-outlined absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
                               calendar_month
@@ -311,9 +572,12 @@ export default function InstallmentsModal({
                             <input
                               type="checkbox"
                               checked={row.dateConfirmed || false}
+                              disabled={isSlave}
                               onChange={(e) => handleFieldChange(idx, 'dateConfirmed', e.target.checked)}
-                              className="w-4 h-4 text-secondary border-slate-350 rounded focus:ring-secondary/20 focus:ring-1 cursor-pointer"
-                              title="Confirmar fecha planificada"
+                              className={`w-4 h-4 text-secondary border-slate-350 rounded focus:ring-secondary/20 focus:ring-1 ${
+                                isSlave ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                              }`}
+                              title={isSlave ? "Deshabilitado en cuota esclava" : "Confirmar fecha planificada"}
                             />
                           </div>
                         </td>
@@ -323,8 +587,11 @@ export default function InstallmentsModal({
                           <input
                             type="number"
                             value={row.uf || ''}
+                            disabled={isSlave}
                             onChange={(e) => handleFieldChange(idx, 'uf', e.target.value)}
-                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-center"
+                            className={`w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-center ${
+                              isSlave ? 'text-slate-400 cursor-not-allowed' : ''
+                            }`}
                             step="0.01"
                             placeholder="0.00"
                           />
@@ -333,12 +600,13 @@ export default function InstallmentsModal({
                         {/* Estado */}
                         <td className="p-1 text-center w-28">
                           <div className="flex items-center justify-center">
-                            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${row.status === 'Pagada'
-                              ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
-                              : row.status === 'Factura emitida'
-                                ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
-                                : 'bg-amber-50 text-amber-800 ring-amber-600/20'
-                              }`}>
+                            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${
+                              row.status === 'Pagada'
+                                ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
+                                : row.status === 'Factura emitida'
+                                  ? 'bg-sky-50 text-sky-700 ring-sky-600/10'
+                                  : 'bg-amber-50 text-amber-800 ring-amber-600/20'
+                            }`}>
                               {row.status || 'Por facturar'}
                             </span>
                           </div>
@@ -349,25 +617,31 @@ export default function InstallmentsModal({
                           <input
                             type="text"
                             value={row.invoiceNumber || ''}
+                            disabled={isSlave || isMaster}
                             onChange={(e) => handleFieldChange(idx, 'invoiceNumber', e.target.value)}
-                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center"
-                            placeholder="..."
+                            className={`w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center ${
+                              isSlave || isMaster ? 'text-slate-400 cursor-not-allowed' : ''
+                            }`}
+                            placeholder={isSlave || isMaster ? "Bloqueado" : "..."}
                           />
                         </td>
 
                         {/* Detalle Pesos (CLP) - EDITABLE */}
                         <td className="p-1 w-36">
                           <div className="flex items-center justify-center gap-0.5">
-                            <span className="text-slate-500 font-bold text-body-sm">$</span>
+                            <span className={`font-bold text-body-sm ${isSlave || isMaster ? 'text-slate-400' : 'text-slate-500'}`}>$</span>
                             <input
                               type="text"
                               value={row.total_clp !== null && row.total_clp !== undefined ? Math.round(row.total_clp).toLocaleString('es-CL') : ''}
+                              disabled={isSlave || isMaster}
                               onChange={(e) => {
                                 const raw = e.target.value.replace(/\D/g, '');
                                 handleFieldChange(idx, 'total_clp', raw);
                               }}
-                              className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-center"
-                              placeholder="0"
+                              className={`w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm font-semibold text-center ${
+                                isSlave || isMaster ? 'text-slate-400 cursor-not-allowed' : ''
+                              }`}
+                              placeholder={isSlave || isMaster ? "Bloqueado" : "0"}
                             />
                           </div>
                         </td>
@@ -379,14 +653,19 @@ export default function InstallmentsModal({
                               type="text"
                               readOnly
                               value={row.actualPaymentDate ? row.actualPaymentDate.split('-').reverse().join('/') : ''}
-                              className="w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 text-center"
-                              placeholder="dd/mm/yyyy"
+                              className={`w-full border-0 bg-transparent p-1 focus:bg-white rounded outline-none text-body-sm pr-6 text-center ${
+                                isSlave || isMaster ? 'text-slate-400 cursor-not-allowed' : ''
+                              }`}
+                              placeholder={isSlave || isMaster ? "Bloqueado" : "dd/mm/yyyy"}
                             />
                             <input
                               type="date"
                               value={row.actualPaymentDate || ''}
+                              disabled={isSlave || isMaster}
                               onChange={(e) => handleFieldChange(idx, 'actualPaymentDate', e.target.value)}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                              className={`absolute inset-0 w-full h-full opacity-0 z-10 ${
+                                isSlave || isMaster ? 'cursor-not-allowed' : 'cursor-pointer'
+                              }`}
                             />
                             <span className="material-symbols-outlined absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[16px]">
                               calendar_month
@@ -400,9 +679,12 @@ export default function InstallmentsModal({
                             type="text"
                             list={`comments-options-${idx}`}
                             value={row.comment || ''}
+                            disabled={isSlave}
                             onChange={(e) => handleFieldChange(idx, 'comment', e.target.value)}
-                            className="w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center"
-                            placeholder="..."
+                            className={`w-full border-0 bg-transparent p-1 focus:ring-1 focus:ring-secondary focus:bg-white rounded outline-none text-body-sm text-center ${
+                              isSlave ? 'text-slate-400 cursor-not-allowed' : ''
+                            }`}
+                            placeholder={isSlave ? "Bloqueado" : "..."}
                           />
                           <datalist id={`comments-options-${idx}`}>
                             <option value="Anticipo" />
@@ -426,11 +708,15 @@ export default function InstallmentsModal({
                             <button
                               type="button"
                               onClick={() => setEditingFileIdx(idx)}
-                              className={`p-1.5 rounded hover:bg-slate-100 transition-all flex items-center justify-center relative ${(row.invoiceFileUrl || row.invoiceFileObject || row.paymentBackupUrl || row.paymentBackupFileObject)
-                                ? 'text-emerald-600'
-                                : 'text-slate-400 hover:text-slate-600'
-                                }`}
-                              title="Editar respaldos de la cuota"
+                              disabled={isSlave || isMaster}
+                              className={`p-1.5 rounded transition-all flex items-center justify-center relative ${
+                                isSlave || isMaster
+                                  ? 'text-slate-300 cursor-not-allowed bg-transparent'
+                                  : (row.invoiceFileUrl || row.invoiceFileObject || row.paymentBackupUrl || row.paymentBackupFileObject)
+                                    ? 'text-emerald-600 hover:bg-slate-105'
+                                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-105'
+                              }`}
+                              title={isSlave || isMaster ? "Acciones no disponibles en cuotas agrupadas" : "Editar respaldos de la cuota"}
                             >
                               <span className="material-symbols-outlined text-[18px]">attach_file</span>
                               {(row.invoiceFileUrl || row.invoiceFileObject || row.paymentBackupUrl || row.paymentBackupFileObject) && (
@@ -442,8 +728,13 @@ export default function InstallmentsModal({
                             <button
                               type="button"
                               onClick={() => handleDeleteRow(idx)}
-                              className="p-1.5 hover:bg-red-50 text-error hover:text-red-700 rounded transition-all flex items-center justify-center"
-                              title="Eliminar cuota"
+                              disabled={isSlave || isMaster}
+                              className={`p-1.5 rounded transition-all flex items-center justify-center ${
+                                isSlave || isMaster
+                                  ? 'text-slate-300 cursor-not-allowed bg-transparent'
+                                  : 'hover:bg-red-50 text-error hover:text-red-700'
+                              }`}
+                              title={isSlave || isMaster ? "Desagrupe para poder eliminar la cuota" : "Eliminar cuota"}
                             >
                               <span className="material-symbols-outlined text-[18px]">delete</span>
                             </button>
@@ -468,8 +759,8 @@ export default function InstallmentsModal({
         {/* Pie de modal */}
         <div className="p-lg border-t border-outline-variant/30 sticky bottom-0 bg-white z-10 rounded-b-xl flex flex-col gap-md">
 
-          {/* Fila 1: Botón Agregar Cuota (Colocado SOBRE el contenedor de validación de suma) */}
-          <div className="flex justify-start">
+          {/* Fila 1: Acciones de cuotas (Agregar, Agrupar, Desagrupar) */}
+          <div className="flex flex-wrap items-center gap-md">
             <button
               type="button"
               onClick={handleAddRow}
@@ -478,6 +769,42 @@ export default function InstallmentsModal({
               <span className="material-symbols-outlined text-[18px]">add</span>
               <span>Agregar Cuota</span>
             </button>
+
+            <button
+              type="button"
+              onClick={handleGroup}
+              disabled={!canGroup}
+              className={`flex items-center gap-1.5 px-4 py-2 border rounded-lg text-body-sm font-bold transition-all active:scale-95 shadow-xs ${
+                canGroup
+                  ? 'bg-secondary text-white border-secondary hover:brightness-110'
+                  : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+              }`}
+              title="Agrupa las cuotas seleccionadas (asigna un grupo común y propaga fecha master)"
+            >
+              <span className="material-symbols-outlined text-[18px]">link</span>
+              <span>Agrupar {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleUngroup}
+              disabled={!canUngroup}
+              className={`flex items-center gap-1.5 px-4 py-2 border rounded-lg text-body-sm font-bold transition-all active:scale-95 shadow-xs ${
+                canUngroup
+                  ? 'bg-white border-red-300 text-red-600 hover:bg-red-50/50'
+                  : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+              }`}
+              title="Desagrupa las cuotas seleccionadas si incluye la cuota master del grupo"
+            >
+              <span className="material-symbols-outlined text-[18px]">link_off</span>
+              <span>Desagrupar</span>
+            </button>
+            
+            {selectedIds.size > 0 && (
+              <span className="text-[12px] text-slate-500 font-medium ml-2">
+                Haz clic en el número de cuota para cambiar la selección.
+              </span>
+            )}
           </div>
 
           {/* Fila 2: Contenedor de validación y botones de guardado */}
