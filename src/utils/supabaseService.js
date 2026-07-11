@@ -778,13 +778,66 @@ export const supabaseService = {
   },
 
   async disassociateBudget(budgetId) {
+    // 1. Fetch current budget title
+    const { data: budgetToUpdate } = await supabase
+      .from('budgets')
+      .select('title')
+      .eq('id', budgetId)
+      .single();
+
+    let newTitle = budgetToUpdate?.title;
+    if (newTitle) {
+      const regex = /^\d+[\s\S]*?-[\s\S]*?\s+-\s+[\s\S]+$/;
+      if (regex.test(newTitle)) {
+        // Extract raw name: e.g. "Edificio Ciudad" from "0280-Edificio Ciudad - TechNova Solutions"
+        const nameParts = newTitle.split('-');
+        newTitle = nameParts.slice(1).join('-').split(' - ')[0]?.trim() || newTitle;
+      }
+    }
+
+    // 2. Clear project_id and update title in DB
     const { data, error } = await supabase
       .from('budgets')
-      .update({ project_id: null })
+      .update({ 
+        project_id: null,
+        title: newTitle
+      })
       .eq('id', budgetId)
       .select('*, clients(*), budget_items(*)');
     if (error) throw error;
     return mapBudgetFromDb(data[0]);
+  },
+
+  async associateBudget(budgetId, projectId) {
+    // 1. Update the budget's project_id
+    const { data, error } = await supabase
+      .from('budgets')
+      .update({ project_id: projectId })
+      .eq('id', budgetId)
+      .select('*, clients(*), budget_items(*)');
+
+    if (error) throw error;
+
+    // 2. Update any existing billing installments associated with this budget to the new project
+    const { error: instError } = await supabase
+      .from('billing_installments')
+      .update({ project_id: projectId })
+      .eq('origin_budget_id', budgetId);
+
+    if (instError) throw instError;
+
+    // 3. Retrieve all billing installments for this project to return to UI
+    const { data: freshInsts, error: fetchInstsError } = await supabase
+      .from('billing_installments')
+      .select('*')
+      .eq('project_id', projectId);
+
+    if (fetchInstsError) throw fetchInstsError;
+
+    return {
+      budget: mapBudgetFromDb(data[0]),
+      installments: freshInsts ? freshInsts.map(mapInstallmentFromDb) : []
+    };
   },
 
   // PROFILES (USERS)

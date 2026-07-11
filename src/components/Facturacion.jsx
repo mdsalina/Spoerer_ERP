@@ -161,43 +161,6 @@ export default function Facturacion({
   const calculatedTax = Math.round(calculatedNet * 0.19);
   const calculatedTotal = calculatedNet + calculatedTax;
 
-  // --- DYNAMIC KPIs (Adjust to selected temporal filter) ---
-  const stats = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    
-    let totalPorFacturarUf = 0;
-    let totalFacturadoPendienteClp = 0;
-    let totalRecaudadoClp = 0;
-    let totalVencidoUf = 0;
-
-    installments.forEach(inst => {
-      // KPI filter: adjust to the selected period filter
-      if (!filterPeriod(inst.date, temporalFilter)) return;
-
-      const isUnpaid = inst.status === 'Por facturar' || inst.status === 'Factura emitida';
-      const isExpired = inst.date && inst.date < todayStr;
-
-      if (inst.status === 'Por facturar') {
-        totalPorFacturarUf += parseFloat(inst.uf) || 0;
-      } else if (inst.status === 'Factura emitida') {
-        totalFacturadoPendienteClp += parseFloat(inst.total_clp) || 0;
-      } else if (inst.status === 'Pagada') {
-        totalRecaudadoClp += parseFloat(inst.total_clp) || 0;
-      }
-
-      if (isUnpaid && isExpired) {
-        totalVencidoUf += parseFloat(inst.uf) || 0;
-      }
-    });
-
-    return {
-      totalPorFacturarUf,
-      totalFacturadoPendienteClp,
-      totalRecaudadoClp,
-      totalVencidoUf
-    };
-  }, [installments, temporalFilter]);
-
   // --- FILTERED INSTALLMENTS ---
   const filteredInstallments = useMemo(() => {
     return installments.filter(inst => {
@@ -242,6 +205,40 @@ export default function Facturacion({
       return true;
     });
   }, [installments, projects, clients, temporalFilter, statusFilter, clientFilter, searchTerm, todayStr]);
+
+  // --- DYNAMIC KPIs (Adjust to all selected filters) ---
+  const stats = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    let totalPorFacturarUf = 0;
+    let totalFacturadoPendienteClp = 0;
+    let totalRecaudadoClp = 0;
+    let totalVencidoUf = 0;
+
+    filteredInstallments.forEach(inst => {
+      const isUnpaid = inst.status === 'Por facturar' || inst.status === 'Factura emitida';
+      const isExpired = inst.date && inst.date < todayStr;
+
+      if (inst.status === 'Por facturar') {
+        totalPorFacturarUf += parseFloat(inst.uf) || 0;
+      } else if (inst.status === 'Factura emitida') {
+        totalFacturadoPendienteClp += parseFloat(inst.total_clp) || 0;
+      } else if (inst.status === 'Pagada') {
+        totalRecaudadoClp += parseFloat(inst.total_clp) || 0;
+      }
+
+      if (isUnpaid && isExpired) {
+        totalVencidoUf += parseFloat(inst.uf) || 0;
+      }
+    });
+
+    return {
+      totalPorFacturarUf,
+      totalFacturadoPendienteClp,
+      totalRecaudadoClp,
+      totalVencidoUf
+    };
+  }, [filteredInstallments]);
 
   // --- HIERARCHICAL DATA GROUPING (Project > Budget > Installments) ---
   const groupedData = useMemo(() => {

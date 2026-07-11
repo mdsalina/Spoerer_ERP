@@ -24,6 +24,7 @@ export default function Proyectos({
   extraCosts,
   onUpdateInstallment,
   onDisassociateBudget,
+  onAssociateBudget,
   onAddExtraCost,
   onDeleteExtraCost,
   onSaveProject,
@@ -39,6 +40,10 @@ export default function Proyectos({
   // Installments unified modal state
   const [isInstallmentsModalOpen, setIsInstallmentsModalOpen] = useState(false);
   const [activeBudgetForInstallments, setActiveBudgetForInstallments] = useState(null);
+
+  // Associate Budget modal states
+  const [associatingBudgetProject, setAssociatingBudgetProject] = useState(null);
+  const [selectedOrphanBudgetId, setSelectedOrphanBudgetId] = useState('');
 
   // Document preview state
   const [previewFile, setPreviewFile] = useState(null);
@@ -82,6 +87,26 @@ export default function Proyectos({
           console.error('FileReader error:', error);
           setDocxHtml('<p class="text-error font-bold text-center py-4">Error al leer el archivo de Word.</p>');
         };
+      } else if (previewFile.url) {
+        // Fetch from Supabase Storage and convert
+        fetch(previewFile.url)
+          .then(res => {
+            if (!res.ok) throw new Error('Network response was not ok');
+            return res.arrayBuffer();
+          })
+          .then(async (arrayBuffer) => {
+            try {
+              const result = await mammoth.convertToHtml({ arrayBuffer });
+              setDocxHtml(result.value || '<p class="text-on-surface-variant italic text-center">Documento vacío.</p>');
+            } catch (error) {
+              console.error('Error al convertir docx a html:', error);
+              setDocxHtml('<p class="text-error font-bold text-center py-4">Error al generar la vista previa de Word.</p>');
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching docx:', error);
+            setDocxHtml('<p class="text-error font-bold text-center py-4">Error al descargar el archivo de Word para la vista previa.</p>');
+          });
       } else {
         setDocxHtml('<div class="text-center py-10"><span class="material-symbols-outlined text-[48px] text-amber-500">warning</span><p class="font-bold text-body-md mt-2 text-on-surface">Vista previa no disponible para archivos simulados.</p><p class="text-label-md text-on-surface-variant mt-1">Por favor descarga el archivo para poder visualizarlo.</p></div>');
       }
@@ -97,6 +122,7 @@ export default function Proyectos({
   const [editCliente, setEditCliente] = useState('');
   const [editTipo, setEditTipo] = useState('');
   const [isCustomEditTipo, setIsCustomEditTipo] = useState(false);
+  const [disassociatingBudgetId, setDisassociatingBudgetId] = useState(null);
 
   // Custom modal / alert states
   const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
@@ -342,9 +368,7 @@ export default function Proyectos({
 
   // Disassociate budget
   const handleDisassociateBudgetLocal = (budgetId) => {
-    if (confirm(`¿Está seguro de que desea desasociar este presupuesto del proyecto?`)) {
-      onDisassociateBudget(budgetId);
-    }
+    setDisassociatingBudgetId(budgetId);
   };
 
   // Extra cost modal handlers
@@ -795,10 +819,26 @@ export default function Proyectos({
                       </div>
                     )}
 
-                    <h4 className="font-label-md text-label-md text-primary uppercase tracking-widest font-bold border-b pb-2 flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[18px]">receipt_long</span>
-                      Presupuestos y Planificación de Cuotas Asociadas
-                    </h4>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-2 gap-sm">
+                      <h4 className="font-label-md text-label-md text-primary uppercase tracking-widest font-bold flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                        Presupuestos y Planificación de Cuotas Asociadas
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setAssociatingBudgetProject(project)}
+                        className="text-secondary hover:bg-secondary/5 px-2.5 py-1.5 rounded-lg text-body-sm transition-all flex items-center gap-1 font-bold border border-secondary/20 active:scale-95"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">link</span>
+                        <span>Asociar Presupuesto</span>
+                      </button>
+                    </div>
+
+                    {projectBudgets.length === 0 && (
+                      <div className="p-md text-center text-on-surface-variant italic border border-dashed border-outline-variant/60 rounded-xl bg-slate-50/40">
+                        No hay presupuestos asociados a este proyecto.
+                      </div>
+                    )}
 
                     {projectBudgets.map((budget) => {
                       const budgetInstallments = localInstallments.filter(
@@ -810,10 +850,35 @@ export default function Proyectos({
                           {/* Budget Info Header */}
                           <div className="flex justify-between items-start gap-md pb-md border-b border-slate-100">
                             <div className="space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-body-md text-primary">
                                   Presupuesto #{budget.quoteId} - {budget.title}
                                 </span>
+                                {(() => {
+                                  if (!budget.backupFiles || budget.backupFiles.length === 0) return null;
+                                  const pdfFile = budget.backupFiles.find(f => f.name.toLowerCase().endsWith('.pdf'));
+                                  const docxFile = budget.backupFiles.find(f => f.name.toLowerCase().endsWith('.docx') || f.name.toLowerCase().endsWith('.doc'));
+                                  const fileToPreview = pdfFile || docxFile;
+                                  if (!fileToPreview) return null;
+                                  
+                                  const isPdf = fileToPreview.name.toLowerCase().endsWith('.pdf');
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setPreviewFile(fileToPreview);
+                                      }}
+                                      className="text-secondary hover:text-primary transition-colors flex items-center p-0.5 hover:bg-slate-100 rounded active:scale-95"
+                                      title={`Visualizar respaldo: ${fileToPreview.name}`}
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        {isPdf ? 'picture_as_pdf' : 'description'}
+                                      </span>
+                                    </button>
+                                  );
+                                })()}
                                 <span className="text-xs bg-secondary/10 text-secondary font-bold px-2 py-0.5 rounded-full">
                                   {budget.amount} UF
                                 </span>
@@ -1241,7 +1306,13 @@ export default function Proyectos({
             </div>
 
             <div className="flex-1 overflow-y-auto border border-outline-variant/20 rounded-xl bg-slate-50/30 p-md min-h-[40vh]">
-              {previewFile.name.toLowerCase().endsWith('.docx') ? (
+              {previewFile.name.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  src={previewFile.url}
+                  className="w-full h-[550px] rounded border border-outline-variant/40 bg-white"
+                  title="Vista previa PDF"
+                />
+              ) : previewFile.name.toLowerCase().endsWith('.docx') ? (
                 docxHtml ? (
                   <div
                     className="prose prose-slate max-w-none text-body-md text-on-surface bg-white p-lg rounded-lg border shadow-xs"
@@ -1258,7 +1329,7 @@ export default function Proyectos({
                   <span className="material-symbols-outlined text-[64px] text-amber-500">warning</span>
                   <h4 className="font-bold text-title-md mt-4 text-on-surface">Formato de archivo no soportado para vista previa</h4>
                   <p className="text-body-md text-on-surface-variant mt-2">
-                    Solo los archivos Word (.docx) se pueden previsualizar directamente en el ERP.
+                    Solo los archivos PDF (.pdf) y Word (.docx) se pueden previsualizar directamente en el ERP.
                   </p>
                   {previewFile.url && (
                     <a
@@ -1410,6 +1481,166 @@ export default function Proyectos({
               >
                 Sí, Eliminar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Confirmation Modal for Budget Disassociation */}
+      {disassociatingBudgetId && (
+        <div className="fixed inset-0 z-50 bg-primary/60 backdrop-blur-sm flex items-center justify-center p-md text-left">
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl overflow-hidden border border-outline-variant p-lg space-y-md text-center animate-scale-up">
+            <div className="w-16 h-16 bg-error-container/20 rounded-full flex items-center justify-center text-error mx-auto shadow-sm mb-2">
+              <span className="material-symbols-outlined text-[36px]">warning</span>
+            </div>
+            
+            <div className="space-y-xs text-center">
+              <h3 className="font-headline-sm text-headline-sm text-primary font-bold">¿Desasociar Presupuesto?</h3>
+              <p className="text-body-md text-on-surface-variant">
+                ¿Está seguro de que desea desasociar este presupuesto del proyecto? Esta acción removerá el vínculo pero no eliminará el presupuesto ni sus cuotas.
+              </p>
+            </div>
+
+            <div className="pt-sm flex gap-md">
+              <button 
+                onClick={() => setDisassociatingBudgetId(null)}
+                className="flex-1 bg-white border border-outline-variant text-on-surface py-sm rounded-lg font-bold hover:bg-surface-container transition-all active:scale-95 text-body-md"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={async () => {
+                  const bId = disassociatingBudgetId;
+                  setDisassociatingBudgetId(null);
+                  try {
+                    await onDisassociateBudget(bId);
+                    setNotification({
+                      type: 'success',
+                      title: 'Presupuesto Desasociado',
+                      message: 'El presupuesto ha sido desasociado del proyecto correctamente.'
+                    });
+                  } catch (err) {
+                    setNotification({
+                      type: 'error',
+                      title: 'Error al Desasociar',
+                      message: err.message || 'Ocurrió un error al desasociar el presupuesto.'
+                    });
+                  }
+                }}
+                className="flex-1 bg-error text-white py-sm rounded-lg font-bold shadow-md hover:brightness-105 active:scale-95 transition-all text-body-md"
+              >
+                Desasociar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Associate Budget */}
+      {associatingBudgetProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-md bg-primary/40 backdrop-blur-sm">
+          <div className="relative bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl flex flex-col animate-scale-up border border-outline-variant">
+            <div className="p-lg border-b border-outline-variant flex justify-between items-center bg-surface sticky top-0 z-10">
+              <div>
+                <h2 className="font-headline-md text-headline-md text-primary font-bold">Asociar Presupuesto</h2>
+                <p className="text-body-md text-on-surface-variant font-bold text-slate-600 mt-1">
+                  Proyecto: {associatingBudgetProject.projectName}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setAssociatingBudgetProject(null);
+                  setSelectedOrphanBudgetId('');
+                }}
+                className="p-2 hover:bg-slate-100 rounded-full text-on-surface-variant transition-all"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="p-lg space-y-lg text-left">
+              {budgets.filter(b => (b.status === 'Aprobado' || b.status === 'Aprovado') && !b.projectId).length > 0 ? (
+                <div className="space-y-md">
+                  <div className="flex flex-col gap-xs">
+                    <label className="text-label-sm text-on-surface-variant font-bold uppercase tracking-wider">
+                      Seleccione un presupuesto huérfano
+                    </label>
+                    <select
+                      value={selectedOrphanBudgetId}
+                      onChange={(e) => setSelectedOrphanBudgetId(e.target.value)}
+                      className="w-full border border-outline-variant rounded-lg p-sm focus:border-secondary focus:ring-1 focus:ring-secondary/20 outline-none transition-all font-body-md text-body-md bg-white text-slate-800"
+                    >
+                      <option value="">-- Seleccionar presupuesto --</option>
+                      {budgets
+                        .filter(b => (b.status === 'Aprobado' || b.status === 'Aprovado') && !b.projectId)
+                        .map(b => (
+                          <option key={b.id} value={b.id}>
+                            #{b.quoteId} - {b.title} ({b.amount} UF) - {b.clientName || b.company || 'Sin cliente'}
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </div>
+
+                  <div className="pt-lg flex justify-end gap-md border-t border-outline-variant/30 bg-white">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssociatingBudgetProject(null);
+                        setSelectedOrphanBudgetId('');
+                      }}
+                      className="px-lg py-sm font-semibold text-on-surface-variant hover:text-on-surface transition-all"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedOrphanBudgetId}
+                      onClick={async () => {
+                        const bId = selectedOrphanBudgetId;
+                        const pId = associatingBudgetProject.id;
+                        setAssociatingBudgetProject(null);
+                        setSelectedOrphanBudgetId('');
+                        try {
+                          await onAssociateBudget(bId, pId);
+                          setNotification({
+                            type: 'success',
+                            title: 'Presupuesto Asociado',
+                            message: 'El presupuesto ha sido asociado al proyecto correctamente.'
+                          });
+                        } catch (err) {
+                          setNotification({
+                            type: 'error',
+                            title: 'Error al Asociar',
+                            message: err.message || 'Ocurrió un error al asociar el presupuesto.'
+                          });
+                        }
+                      }}
+                      className={`px-xl py-sm rounded-lg font-semibold shadow-sm active:scale-95 transition-all text-white ${
+                        selectedOrphanBudgetId
+                          ? 'bg-primary hover:bg-primary-container'
+                          : 'bg-slate-300 cursor-not-allowed'
+                      }`}
+                    >
+                      Asociar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-md">
+                  <div className="text-center text-on-surface-variant italic py-lg">
+                    No hay presupuestos aprobados huérfanos disponibles para asociar.
+                  </div>
+                  <div className="pt-lg flex justify-end border-t border-outline-variant/30">
+                    <button
+                      type="button"
+                      onClick={() => setAssociatingBudgetProject(null)}
+                      className="bg-primary text-white px-xl py-sm rounded-lg font-semibold shadow-sm hover:bg-primary-container active:scale-95 transition-all"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

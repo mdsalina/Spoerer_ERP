@@ -83,7 +83,8 @@ export default function Presupuestos({
   statusFilter,
   setStatusFilter,
   calcPeriod,
-  setCalcPeriod
+  setCalcPeriod,
+  onSaveProject
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [notification, setNotification] = useState(null); // { type: 'success' | 'error', title: string, message: string }
@@ -1027,6 +1028,36 @@ export default function Presupuestos({
       }
     }
 
+    let projectIdToLink = existingQuote ? existingQuote.projectId : null;
+
+    if (validateProjectNameFormat(quoteTitle)) {
+      const nameParts = quoteTitle.split('-');
+      const projectNumber = nameParts[0]?.trim() || '';
+      const rawProjectName = nameParts.slice(1).join('-').split(' - ')[0]?.trim() || quoteTitle;
+
+      const existingProj = projects.find(p => p.projectNumber === projectNumber);
+      if (existingProj) {
+        projectIdToLink = existingProj.id;
+      } else if (onSaveProject) {
+        try {
+          const newProj = await onSaveProject({
+            projectNumber: projectNumber,
+            rawProjectName: rawProjectName,
+            clientId: clientObj.id,
+            superficie: 0,
+            rentabilidad: 0,
+            anio: new Date().getFullYear(),
+            status: 'Activo'
+          });
+          projectIdToLink = newProj.id;
+        } catch (err) {
+          console.error("Error al crear proyecto desde presupuesto:", err);
+        }
+      }
+    } else {
+      projectIdToLink = null;
+    }
+
     const newQuote = {
       id: currentBudgetUuid || formattedId,
       quoteId: formattedId,
@@ -1042,7 +1073,7 @@ export default function Presupuestos({
         { id: 1, description: quoteTitle || 'Servicios ERP', qty: 1, price: parseFloat(subtotal) || 0 }
       ],
       backupFiles: backupFiles,
-      projectId: existingQuote ? existingQuote.projectId : null
+      projectId: projectIdToLink
     };
 
     try {
@@ -1088,28 +1119,26 @@ export default function Presupuestos({
     return matchesSearch && matchesStatus && matchesPeriod;
   });
 
-  // Calculate totals based on selected period
-  const filteredByPeriodQuotes = quotes.filter(q => isQuoteInPeriod(q, calcPeriod));
-
-  const totalApproved = filteredByPeriodQuotes
+  // Calculate totals based on filtered quotes
+  const totalApproved = filteredQuotes
     .filter(q => q.status === 'Aprobado' || q.status === 'Aprovado')
     .reduce((sum, q) => sum + (parseFloat(q.amount) || 0), 0);
 
-  const totalSent = filteredByPeriodQuotes
+  const totalSent = filteredQuotes
     .filter(q => q.status === 'Enviado')
     .reduce((sum, q) => sum + (parseFloat(q.amount) || 0), 0);
 
-  const totalRejected = filteredByPeriodQuotes
+  const totalRejected = filteredQuotes
     .filter(q => q.status === 'Rechazado')
     .reduce((sum, q) => sum + (parseFloat(q.amount) || 0), 0);
 
-  const approvedQuotesCount = filteredByPeriodQuotes
+  const approvedQuotesCount = filteredQuotes
     .filter(q => q.status === 'Aprobado' || q.status === 'Aprovado').length;
 
-  const sentQuotesCount = filteredByPeriodQuotes
+  const sentQuotesCount = filteredQuotes
     .filter(q => q.status === 'Enviado').length;
 
-  const rejectedQuotesCount = filteredByPeriodQuotes
+  const rejectedQuotesCount = filteredQuotes
     .filter(q => q.status === 'Rechazado').length;
 
   const existingQuoteObj = quotes.find(q => q.quoteId === quoteId || q.quoteId === quoteId.padStart(4, '0') || q.id === currentBudgetUuid);
@@ -1283,7 +1312,19 @@ export default function Presupuestos({
                         <span className="font-body-md font-bold text-on-surface">{quote.clientName}</span>
                       </div>
                     </td>
-                    <td className="p-md font-body-md text-on-surface">{quote.title}</td>
+                    <td className="p-md font-body-md text-on-surface">
+                      <div className="flex items-center gap-1.5">
+                        <span>{quote.title}</span>
+                        {(quote.status === 'Aprobado' || quote.status === 'Aprovado') && !quote.projectId && (
+                          <span 
+                            className="material-symbols-outlined text-amber-500 text-[18px] cursor-help select-none flex-shrink-0"
+                            title="Este presupuesto está aprobado pero no está asociado a ningún proyecto"
+                          >
+                            warning
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-md font-body-md text-on-surface">{quote.date}</td>
                     <td className="p-md font-body-md font-bold text-on-surface text-right">
                       ${quote.amount.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

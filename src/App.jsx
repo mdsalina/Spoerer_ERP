@@ -214,9 +214,25 @@ export default function App() {
     try {
       const updatedBudget = await supabaseService.disassociateBudget(budgetId);
       setQuotes(prev => prev.map(q => q.id === budgetId ? updatedBudget : q));
-      alert("Presupuesto desasociado del proyecto correctamente.");
+      return updatedBudget;
     } catch (err) {
-      alert("Error al desasociar presupuesto: " + err.message);
+      console.error("Error al desasociar presupuesto:", err);
+      throw err;
+    }
+  };
+
+  const handleAssociateBudget = async (budgetId, projectId) => {
+    try {
+      const result = await supabaseService.associateBudget(budgetId, projectId);
+      setQuotes(prev => prev.map(q => q.id === budgetId ? result.budget : q));
+      setInstallments(prev => {
+        const filtered = prev.filter(i => i.project_id !== projectId);
+        return [...filtered, ...result.installments];
+      });
+      return result;
+    } catch (err) {
+      console.error("Error al asociar presupuesto:", err);
+      throw err;
     }
   };
 
@@ -234,7 +250,15 @@ export default function App() {
   const handleSaveProject = async (updatedProject) => {
     try {
       const saved = await supabaseService.saveProject(updatedProject);
-      setProjects(prev => prev.map(p => p.id === saved.id ? saved : p));
+      setProjects(prev => {
+        const exists = prev.some(p => p.id === saved.id);
+        if (exists) {
+          return prev.map(p => p.id === saved.id ? saved : p);
+        } else {
+          return [saved, ...prev];
+        }
+      });
+      return saved;
     } catch (err) {
       console.error("Error al actualizar proyecto:", err);
       throw err;
@@ -487,6 +511,7 @@ export default function App() {
               setStatusFilter={setPresupuestosStatusFilter}
               calcPeriod={presupuestosCalcPeriod}
               setCalcPeriod={setPresupuestosCalcPeriod}
+              onSaveProject={handleSaveProject}
             />
           )}
           {currentTab === 'facturacion' && (
@@ -528,6 +553,7 @@ export default function App() {
               extraCosts={extraCosts}
               onUpdateInstallment={handleUpdateInstallment}
               onDisassociateBudget={handleDisassociateBudget}
+              onAssociateBudget={handleAssociateBudget}
               onAddExtraCost={handleAddExtraCost}
               onDeleteExtraCost={handleDeleteExtraCost}
               onSaveProject={handleSaveProject}
