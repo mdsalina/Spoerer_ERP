@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditUser, onDeleteUser, searchTerm, setSearchTerm }) {
+export default function Usuarios({ users, currentUser, onAddUser, onToggleUserStatus, onEditUser, onDeleteUser, searchTerm, setSearchTerm }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // New user form state
@@ -32,6 +32,7 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
   // Custom UI alert & confirm states
   const [notification, setNotification] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('Todos'); // 'Todos', 'Active', 'Inactive'
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
@@ -119,11 +120,18 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
     });
   };
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.role.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = 
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.role.toLowerCase().includes(searchTerm.toLowerCase());
+      
+    const matchesStatus = 
+      statusFilter === 'Todos' || 
+      user.status === statusFilter;
+      
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="space-y-xl animate-fade-in text-left">
@@ -211,28 +219,57 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
       </div>
 
       {/* Filter Bar */}
-      <section className="glass-card rounded-xl p-md flex flex-wrap items-end gap-md shadow-sm">
-        <div className="flex-grow max-w-lg min-w-[240px]">
-          <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold">Buscar Usuario</label>
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
-            <input 
-              className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none" 
-              placeholder="Buscar usuarios, roles..." 
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+      <section className="glass-card rounded-xl p-md flex flex-wrap items-end justify-between gap-md shadow-sm">
+        <div className="flex flex-wrap items-end gap-md flex-grow">
+          <div className="flex-grow max-w-lg min-w-[240px]">
+            <label className="block font-label-md text-label-md text-on-surface-variant mb-1 uppercase font-bold text-[11px]">Buscar Usuario</label>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[18px]">search</span>
+              <input 
+                className="w-full pl-10 pr-4 py-2 bg-white border border-outline-variant rounded-lg text-body-md focus:ring-1 focus:ring-secondary focus:outline-none" 
+                placeholder="Buscar usuarios, roles..." 
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          <button 
+            onClick={() => {
+              setSearchTerm('');
+              setStatusFilter('Todos');
+            }}
+            className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
+            title="Limpiar Filtros"
+          >
+            <span className="material-symbols-outlined text-[16px]">clear_all</span>
+            <span>Limpiar</span>
+          </button>
+        </div>
+
+        {/* Status Filter Button Group at the far right */}
+        <div className="flex flex-col gap-xs text-left">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">Estado</span>
+          <div className="flex bg-surface-container-low p-1 rounded-lg border border-outline-variant h-[38px] items-center">
+            {[
+              { value: 'Todos', label: 'Todos' },
+              { value: 'Active', label: 'Activos' },
+              { value: 'Inactive', label: 'Inactivos' }
+            ].map((status) => (
+              <button
+                key={status.value}
+                type="button"
+                onClick={() => setStatusFilter(status.value)}
+                className={`px-3 py-1 rounded text-[11px] font-semibold transition-all h-full ${statusFilter === status.value
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-on-surface-variant hover:bg-surface-container-high'
+                  }`}
+              >
+                {status.label}
+              </button>
+            ))}
           </div>
         </div>
-        <button 
-          onClick={() => setSearchTerm('')}
-          className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
-          title="Limpiar Búsqueda"
-        >
-          <span className="material-symbols-outlined text-[16px]">clear_all</span>
-          <span>Limpiar</span>
-        </button>
       </section>
 
       {/* Main Data Table Container */}
@@ -318,9 +355,24 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
                           </span>
                         </button>
                         <button 
-                          onClick={() => setUserToDelete(user)}
-                          className="p-1 hover:bg-red-50 rounded text-error hover:text-red-700 transition-all" 
-                          title="Eliminar"
+                          onClick={() => {
+                            if (user.id === currentUser?.id) {
+                              setNotification({
+                                type: 'error',
+                                title: 'Acción no permitida',
+                                message: 'No puedes eliminar tu propia cuenta de usuario.'
+                              });
+                              return;
+                            }
+                            setUserToDelete(user);
+                          }}
+                          className={`p-1 rounded transition-all ${
+                            user.id === currentUser?.id 
+                              ? 'opacity-40 cursor-not-allowed text-slate-400' 
+                              : 'hover:bg-red-50 text-error hover:text-red-700'
+                          }`} 
+                          title={user.id === currentUser?.id ? "No puedes eliminar tu propia cuenta" : "Eliminar"}
+                          disabled={user.id === currentUser?.id}
                         >
                           <span className="material-symbols-outlined text-[20px]">delete</span>
                         </button>
@@ -712,6 +764,15 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
               <button 
                 onClick={async () => {
                   const id = userToDelete.id;
+                  if (id === currentUser?.id) {
+                    setNotification({
+                      type: 'error',
+                      title: 'Acción no permitida',
+                      message: 'No puedes eliminar tu propia cuenta de usuario.'
+                    });
+                    setUserToDelete(null);
+                    return;
+                  }
                   setUserToDelete(null);
                   try {
                     await onDeleteUser(id);
@@ -721,10 +782,14 @@ export default function Usuarios({ users, onAddUser, onToggleUserStatus, onEditU
                       message: 'El usuario ha sido removido exitosamente del sistema.'
                     });
                   } catch (err) {
+                    let errorMessage = err.message;
+                    if (err.message?.includes('violates foreign key constraint') || err.message?.includes('budgets_created_by_fkey')) {
+                      errorMessage = 'No se puede eliminar este usuario porque tiene elementos (como presupuestos) asignados a su cuenta en la base de datos. Para mantener la integridad de los datos, debe reasignar o eliminar esos elementos antes de poder borrar la cuenta.';
+                    }
                     setNotification({
                       type: 'error',
                       title: 'Error al Eliminar',
-                      message: err.message
+                      message: errorMessage
                     });
                   }
                 }}

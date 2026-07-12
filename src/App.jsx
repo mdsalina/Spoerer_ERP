@@ -81,6 +81,7 @@ export default function App() {
             
           if (profile && profile.status === 'Active') {
             setUser({
+              id: profile.id,
               email: profile.email,
               name: profile.name,
               role: profile.role
@@ -454,6 +455,9 @@ export default function App() {
   };
 
   const deleteUser = async (userId) => {
+    if (userId === user?.id) {
+      throw new Error("No puedes eliminar tu propia cuenta de usuario.");
+    }
     try {
       await supabaseService.deleteUser(userId);
       setUsers(prev => prev.filter(u => u.id !== userId));
@@ -535,6 +539,7 @@ export default function App() {
           {currentTab === 'usuarios' && isAdmin && (
             <Usuarios 
               users={users} 
+              currentUser={user}
               onAddUser={addUser} 
               onToggleUserStatus={toggleUserStatus} 
               onEditUser={editUser}

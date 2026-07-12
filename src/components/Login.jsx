@@ -3,8 +3,8 @@ import logoSpr from '../assets/logo SPR.PNG';
 import { supabase } from '../utils/supabaseClient';
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('admin@spoerer.cl');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -47,6 +47,7 @@ export default function Login({ onLogin }) {
       setTimeout(() => {
         setIsLoading(false);
         onLogin({ 
+          id: profile.id,
           email: profile.email, 
           name: profile.name, 
           role: profile.role 
