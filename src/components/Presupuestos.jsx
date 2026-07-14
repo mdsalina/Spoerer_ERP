@@ -165,6 +165,8 @@ export default function Presupuestos({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [tipo, setTipo] = useState('');
   const [isCustomTipo, setIsCustomTipo] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const suggestionsRef = useRef(null);
 
   // Reviewers modal states
@@ -537,8 +539,6 @@ export default function Presupuestos({
       }
     });
 
-    const totalCuotasCalculated = expandedTable.length;
-
     // Parse project number and name from semantic string
     const nameParts = projectName.split('-');
     const projectNumber = nameParts[0]?.trim() || '';
@@ -555,8 +555,15 @@ export default function Presupuestos({
       tipo: tipo || null
     };
 
+    const budgetForm = {
+      amount: parseFloat(valorProyecto) || 0,
+      title: descripcion || '',
+      backupFiles: approvingQuoteBackupFiles
+    };
+
     try {
-      await onApproveBudgetAndCreateProject(projectForm, approvingQuote.id, expandedTable);
+      setIsApproving(true);
+      await onApproveBudgetAndCreateProject(projectForm, approvingQuote.id, expandedTable, budgetForm);
       setNotification({
         type: 'success',
         title: 'Presupuesto Aprobado',
@@ -574,6 +581,8 @@ export default function Presupuestos({
       setIsCustomTipo(false);
     } catch (err) {
       setValidationError(err.message || 'Error al aprobar presupuesto.');
+    } finally {
+      setIsApproving(false);
     }
   };
 
@@ -1077,6 +1086,7 @@ export default function Presupuestos({
     };
 
     try {
+      setIsSaving(true);
       await onAddQuote(newQuote, newQuote.items, editBillingTable);
       setNotification({
         type: 'success',
@@ -1100,6 +1110,8 @@ export default function Presupuestos({
         title: 'Error al Guardar',
         message: err.message || 'Ocurrió un error al guardar el presupuesto.'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1226,7 +1238,7 @@ export default function Presupuestos({
             </div>
           </div>
           <button
-            onClick={() => { setSearchTerm(''); setStatusFilter('Todos'); setCalcPeriod('12'); }}
+            onClick={() => { setSearchTerm(''); setStatusFilter('Todos'); setCalcPeriod('all'); }}
             className="flex items-center gap-2 px-md py-2 border border-outline-variant rounded bg-white text-on-surface hover:bg-slate-50 transition-all font-label-md active:scale-95 h-[38px]"
           >
             <span className="material-symbols-outlined text-[16px]">clear_all</span>
@@ -2046,17 +2058,24 @@ export default function Presupuestos({
               {/* Footer Actions */}
               <div className="flex justify-end gap-md pt-lg border-t border-outline-variant">
                 <button
-                  className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
+                  className={`px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                   onClick={() => setIsModalOpen(false)}
+                  disabled={isSaving}
                   type="button"
                 >
                   Descartar
                 </button>
                 <button
                   type="submit"
-                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95"
+                  disabled={isSaving}
+                  className={`px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95 flex items-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
-                  Guardar Presupuesto
+                  {isSaving ? (
+                    <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px]">save</span>
+                  )}
+                  <span>{isSaving ? 'Guardando...' : 'Guardar Presupuesto'}</span>
                 </button>
               </div>
             </form>
@@ -2693,6 +2712,7 @@ export default function Presupuestos({
               <div className="flex justify-end gap-md pt-lg border-t border-outline-variant">
                 <button
                   type="button"
+                  disabled={isApproving}
                   onClick={() => {
                     setIsApproveModalOpen(false);
                     setApprovingQuote(null);
@@ -2700,16 +2720,21 @@ export default function Presupuestos({
                     setPrefilledFromProjectId(null);
                     setShowSuggestions(false);
                   }}
-                  className="px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold"
+                  className={`px-lg py-2 border border-outline-variant rounded text-on-surface hover:bg-slate-50 transition-all font-bold ${isApproving ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   Cancelar Aprobación
                 </button>
                 <button
                   type="submit"
-                  className="px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95 flex items-center gap-2"
+                  disabled={isApproving}
+                  className={`px-lg py-2 bg-secondary text-white rounded hover:brightness-110 transition-all font-bold shadow-lg shadow-secondary/20 active:scale-95 flex items-center gap-2 ${isApproving ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
-                  <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                  <span>Aprobar Presupuesto y Crear Proyecto</span>
+                  {isApproving ? (
+                    <span className="material-symbols-outlined text-[18px] animate-spin">sync</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
+                  )}
+                  <span>{isApproving ? 'Aprobando...' : 'Aprobar Presupuesto y Crear Proyecto'}</span>
                 </button>
               </div>
             </form>

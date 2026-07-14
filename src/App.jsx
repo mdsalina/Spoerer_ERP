@@ -38,7 +38,7 @@ export default function App() {
 
   const [presupuestosSearch, setPresupuestosSearch] = useState('');
   const [presupuestosStatusFilter, setPresupuestosStatusFilter] = useState('Todos');
-  const [presupuestosCalcPeriod, setPresupuestosCalcPeriod] = useState('12');
+  const [presupuestosCalcPeriod, setPresupuestosCalcPeriod] = useState('all');
 
   const [facturacionTemporalFilter, setFacturacionTemporalFilter] = useState('Todos');
   const [facturacionStatusFilter, setFacturacionStatusFilter] = useState('Todos');
@@ -179,13 +179,14 @@ export default function App() {
   };
 
   // VÍNCULO: APROBACIÓN Y CREACIÓN DE PROYECTO CON CUOTAS
-  const handleApproveBudgetAndCreateProject = async (projectForm, budgetId, installmentsList) => {
+  const handleApproveBudgetAndCreateProject = async (projectForm, budgetId, installmentsList, budgetForm = null) => {
     try {
       setLoading(true);
       const result = await supabaseService.approveBudgetAndCreateProject(
         projectForm, 
         budgetId, 
-        installmentsList
+        installmentsList,
+        budgetForm
       );
       
       // Actualizar estados planos locales
@@ -271,6 +272,7 @@ export default function App() {
       await supabaseService.deleteProject(id);
       setProjects(prev => prev.filter(p => p.id !== id));
       setInstallments(prev => prev.filter(i => i.project_id !== id));
+      setQuotes(prev => prev.map(q => q.projectId === id ? { ...q, projectId: null } : q));
     } catch (err) {
       console.error("Error al eliminar proyecto:", err);
       throw err;

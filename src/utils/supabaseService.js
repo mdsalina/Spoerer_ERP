@@ -658,7 +658,7 @@ export const supabaseService = {
   },
 
   // Vínculo Presupuesto + Proyecto + Cuotas (Transacción Atómica de Aprobación)
-  async approveBudgetAndCreateProject(projectForm, budgetId, billingInstallments) {
+  async approveBudgetAndCreateProject(projectForm, budgetId, billingInstallments, budgetForm = null) {
     // 1. Create Project
     const projectData = {
       project_number: projectForm.projectNumber,
@@ -705,7 +705,49 @@ export const supabaseService = {
       : 0;
     const frozenTotalAmount = Math.round(frozenNet * 100) / 100;
 
-    // 3. Move files in storage if status changes to Aprobado
+    // 2.5 Scale budget items if the amount was changed in the approval modal
+    if (budgetForm && budgetForm.amount !== undefined && Math.abs(budgetForm.amount - frozenTotalAmount) > 0.01) {
+      if (dbBudgetItemData && dbBudgetItemData.length > 0) {
+        const scaleFactor = frozenTotalAmount > 0 ? (budgetForm.amount / frozenTotalAmount) : 1;
+        let currentSum = 0;
+        
+        for (let i = 0; i < dbBudgetItemData.length; i++) {
+          const item = dbBudgetItemData[i];
+          let newUnitPrice = 0;
+          
+          if (i === dbBudgetItemData.length - 1) {
+            // Last item: adjust to match the target amount exactly
+            const targetQty = parseFloat(item.quantity) || 1;
+            const remainingAmount = budgetForm.amount - currentSum;
+            newUnitPrice = Math.round((remainingAmount / targetQty) * 100) / 100;
+          } else {
+            if (frozenTotalAmount > 0) {
+              newUnitPrice = Math.round((parseFloat(item.unit_price) * scaleFactor) * 100) / 100;
+            } else if (i === 0) {
+              newUnitPrice = budgetForm.amount;
+            }
+            currentSum += (parseFloat(item.quantity) || 1) * newUnitPrice;
+          }
+          
+          await supabase
+            .from('budget_items')
+            .update({ unit_price: newUnitPrice })
+            .eq('id', item.id);
+        }
+      } else {
+        // Insert a default item if there were no items
+        await supabase
+          .from('budget_items')
+          .insert({
+            budget_id: budgetId,
+            description: budgetForm.title || 'Servicios ERP',
+            quantity: 1,
+            unit_price: budgetForm.amount
+          });
+      }
+    }
+
+    // 3. Move files in storage if status changes to Aprobado, or handle budgetForm files
     const { data: currentBudget } = await supabase
       .from('budgets')
       .select('status, budget_number, backup_files')
@@ -714,27 +756,69 @@ export const supabaseService = {
 
     let finalFiles = [];
     if (currentBudget) {
-      if (currentBudget.status !== 'Aprobado') {
-        finalFiles = await moveQuoteFiles(
-          currentBudget.budget_number,
-          currentBudget.status,
-          'Aprobado',
-          currentBudget.backup_files || []
-        );
+      if (budgetForm && budgetForm.backupFiles) {
+        // Remove deleted files from storage
+        const oldFiles = currentBudget.backup_files || [];
+        const newFileNames = new Set(budgetForm.backupFiles.map(f => f.name));
+        for (const oldFile of oldFiles) {
+          if (!newFileNames.has(oldFile.name) && oldFile.path) {
+            await supabase.storage.from('budgets').remove([oldFile.path]);
+          }
+        }
+
+        // Move existing files that weren't deleted
+        const existingFilesToMove = budgetForm.backupFiles.filter(f => !f.fileObject);
+        let movedFiles = [];
+        if (currentBudget.status !== 'Aprobado') {
+          movedFiles = await moveQuoteFiles(
+            currentBudget.budget_number,
+            currentBudget.status,
+            'Aprobado',
+            existingFilesToMove
+          );
+        } else {
+          movedFiles = existingFilesToMove;
+        }
+
+        // Upload new files
+        const newFilesToUpload = budgetForm.backupFiles.filter(f => f.fileObject);
+        const combinedFiles = [...movedFiles, ...newFilesToUpload];
+        
+        finalFiles = await uploadQuoteFiles(currentBudget.budget_number, 'Aprobado', combinedFiles);
       } else {
-        finalFiles = currentBudget.backup_files || [];
+        if (currentBudget.status !== 'Aprobado') {
+          finalFiles = await moveQuoteFiles(
+            currentBudget.budget_number,
+            currentBudget.status,
+            'Aprobado',
+            currentBudget.backup_files || []
+          );
+        } else {
+          finalFiles = currentBudget.backup_files || [];
+        }
       }
     }
 
-    // 4. Update Budget (setApproved, link project_id, and update files)
+    // 4. Update Budget (setApproved, link project_id, update files, amount, and title if provided)
+    const budgetUpdateData = {
+      status: 'Aprobado',
+      project_id: project.id,
+      backup_files: finalFiles
+    };
+
+    if (budgetForm && budgetForm.amount !== undefined) {
+      budgetUpdateData.total_amount = budgetForm.amount;
+    } else {
+      budgetUpdateData.total_amount = frozenTotalAmount;
+    }
+
+    if (budgetForm && budgetForm.title !== undefined) {
+      budgetUpdateData.title = budgetForm.title;
+    }
+
     const { error: budgetError } = await supabase
       .from('budgets')
-      .update({
-        status: 'Aprobado',
-        project_id: project.id,
-        total_amount: frozenTotalAmount,
-        backup_files: finalFiles
-      })
+      .update(budgetUpdateData)
       .eq('id', budgetId);
     
     if (budgetError) throw budgetError;
